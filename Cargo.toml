@@ -1,0 +1,51 @@
+[package]
+name = "prodef"
+version = "0.2.0"
+edition = "2024"
+
+authors = ["Andreas J. Weiss <ajefweiss@gmail.com>"]
+description = "A simple Rust crate for handling probability distributions, primarily intended for use with Bayesian inference."
+homepage = "https://github.com/ajefweiss/prodef-rs/"
+repository = "https://github.com/ajefweiss/prodef-rs/"
+readme = "README.md"
+license = "MIT"
+
+[package.metadata.docs.rs]
+features = ["pyo3"]
+
+[dependencies]
+derive_more = { version = "2.1.1", features = ["full"] }
+itertools = "0.14.0"
+nalgebra = { version ="0.34.2", features = ["rayon", "serde-serialize"] }
+num-traits = "0.2.19"
+numpy = { version = "0.28.0", features = ["nalgebra"], optional = true }
+pyo3 = { version = "0.28.3", features = ["multiple-pymethods"], optional = true }
+rand = "0.10.1"
+rand_distr = "0.6.0"
+rand_xoshiro = { version = "0.8.0", optional = true}
+rayon = "1.12.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_arrays = "0.2.0"
+thiserror = "2.0.18"
+
+[dev-dependencies]
+approx = "0.5.1"
+criterion = { version = "0.8", features = ["html_reports"] }
+rand_xoshiro = "0.8.0"
+
+[[bench]]
+name = "multivariate"
+harness = false
+
+[[bench]]
+name = "multinormal"
+harness = false
+
+[[bench]]
+name = "particle"
+harness = false
+
+[features]
+pyo3 = ["dep:numpy", "dep:pyo3", "dep:rand_xoshiro"]
+pyo3_f32 = ["pyo3"]
+
