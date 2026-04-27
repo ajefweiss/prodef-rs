@@ -1,23 +1,27 @@
 #![doc = include_str!("../README.md")]
-#![deny(missing_docs)]
 
 mod domain;
 mod macros;
 mod multinormal;
 mod multivariate;
 mod particle;
+mod univariate;
 
 // Enable access to the Python types if the "pyo3" feature is enabled.
 #[cfg(feature = "pyo3")]
 pub mod pytypes;
 
+#[cfg(test)]
+mod tests;
+
 pub use domain::Domain;
 pub use multinormal::MultivariateNormalDensity;
-pub use multivariate::{
-    ConstantDensity, CosineDensity, LogUniformDensity, MultivariateDensity, NormalDensity,
+pub use multivariate::MultivariateDensity;
+pub use particle::ParticleDensity;
+pub use univariate::{
+    ConstantDensity, CosineDensity, LogUniformDensity, LognormalDensity, NormalDensity,
     UniformDensity, UnivariateDensity,
 };
-pub use particle::ParticleDensity;
 
 use nalgebra::{DefaultAllocator, Dim, OVector, RealField, VectorView, allocator::Allocator};
 use rand::RngExt;
@@ -125,6 +129,11 @@ where
     where
         DefaultAllocator: Allocator<D>;
 
+    /// Returns the mean of the distribution.
+    fn mean(&self) -> OVector<T, D>
+    where
+        DefaultAllocator: Allocator<D>;
+
     /// Draw a random sample from the probability density distribution using the provided random number generator and sampling mode.
     ///
     /// Returns [`None`] if the sampling procedure fails (too many attempted draws).
@@ -137,6 +146,11 @@ where
     /// This function behaves the same as [`Density::sample`] when using [`SamplingMode::SingleAttempt`].
     /// The iterator will yield `None` for samples that fail the sampling procedure (e.g., due to too many attempts in rejection sampling).
     fn sample_iter(&self, rng: &mut impl RngExt) -> impl Iterator<Item = Option<OVector<T, D>>>
+    where
+        DefaultAllocator: Allocator<D>;
+
+    /// Returns the variance of the distribution.
+    fn variance(&self) -> OVector<T, D>
     where
         DefaultAllocator: Allocator<D>;
 }

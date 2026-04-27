@@ -142,14 +142,20 @@ where
                 sdoms.iter().enumerate().map(|(i, (opt_min, opt_max))| {
                     let value = &sample[i];
 
-                    // Unbounded bounds are treated as the minimum and maximum values of the type, respectively.
-                    if value < opt_min.as_ref().unwrap_or(&T::min_value().unwrap()) {
-                        opt_min.clone().unwrap()
-                    } else if value > opt_max.as_ref().unwrap_or(&T::max_value().unwrap()) {
-                        opt_max.clone().unwrap()
-                    } else {
-                        value.clone()
+                    // Clamp value to the bounds, respecting unbounded dimensions (None)
+                    if let Some(min) = opt_min
+                        && value < min
+                    {
+                        return min.clone();
                     }
+
+                    if let Some(max) = opt_max
+                        && value > max
+                    {
+                        return max.clone();
+                    }
+
+                    value.clone()
                 }),
             ),
         }
@@ -247,60 +253,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nalgebra::OVector;
 
     #[test]
-    fn test_clamp_below_minimum() {
-        let domain = Domain::new_mdomain(OVector::from([(Some(0.0), Some(1.0))]));
-        let sample_below = OVector::from([-0.5]);
-        let clamped = domain.clamp::<U1, U1>(&sample_below.as_view());
-        assert_eq!(clamped[0], 0.0);
-    }
-
-    #[test]
-    fn test_clamp_above_maximum() {
-        let domain = Domain::new_mdomain(OVector::from([(Some(0.0), Some(1.0))]));
-        let sample_above = OVector::from([1.5]);
-        let clamped = domain.clamp::<U1, U1>(&sample_above.as_view());
-        assert_eq!(clamped[0], 1.0);
-    }
-
-    #[test]
-    fn test_contains_unbounded() {
-        let domain: Domain<f64, U1> = Domain::UDomain(U1);
-        let sample = OVector::from([-1e6]);
-        assert!(domain.contains::<U1, U1>(&sample.as_view()));
-    }
-
-    #[test]
-    fn test_maximum_values() {
-        let domain =
-            Domain::new_mdomain(OVector::from([(Some(0.0), Some(1.0)), (Some(-5.0), None)]));
-        let maxes = domain.maximum_values();
-        assert_eq!(maxes[0], Some(1.0));
-        assert_eq!(maxes[1], None);
-    }
-
-    #[test]
-    fn test_domain_boundaries_inclusive() {
-        // Verify that boundary points [0, 1] are inclusive in bounded domain
-        let domain = Domain::new_mdomain(OVector::from([(Some(0.0), Some(1.0))]));
-
-        // Test lower boundary (0.0 should be contained)
-        let lower_bound: f64 = 0.0;
-        assert!(domain.contains::<U1, U1>(&OVector::from([lower_bound]).as_view()));
-
-        // Test upper boundary (1.0 should be contained)
-        let upper_bound: f64 = 1.0;
-        assert!(domain.contains::<U1, U1>(&OVector::from([upper_bound]).as_view()));
-
-        // Test interior point (0.5 should be contained)
-        let interior: f64 = 0.5;
-        assert!(domain.contains::<U1, U1>(&OVector::from([interior]).as_view()));
-    }
-
-    #[test]
-    fn test_domain_boundaries_exclusive_outside() {
+    fn test_boundaries_exclusive_outside() {
         // Verify that points just outside [0, 1] are NOT contained
         let domain = Domain::new_mdomain(OVector::from([(Some(0.0), Some(1.0))]));
 
@@ -321,45 +276,83 @@ mod tests {
     }
 
     #[test]
-    fn test_domain_half_bounded_lower() {
-        // Verify half-bounded domains work correctly (lower bound only, upper unbounded)
-        // Note: lower bound is inclusive (value >= min)
+    fn test_boundaries_inclusive() {
+        // Verify that boundary points [0, 1] are inclusive in bounded domain
+        let domain = Domain::new_mdomain(OVector::from([(Some(0.0), Some(1.0))]));
+
+        // Test lower boundary (0.0 should be contained)
+        let lower_bound: f64 = 0.0;
+        assert!(domain.contains::<U1, U1>(&OVector::from([lower_bound]).as_view()));
+
+        // Test upper boundary (1.0 should be contained)
+        let upper_bound: f64 = 1.0;
+        assert!(domain.contains::<U1, U1>(&OVector::from([upper_bound]).as_view()));
+
+        // Test interior point (0.5 should be contained)
+        let interior: f64 = 0.5;
+        assert!(domain.contains::<U1, U1>(&OVector::from([interior]).as_view()));
+    }
+
+    #[test]
+    fn test_clamp_above_maximum() {
+        let domain = Domain::new_mdomain(OVector::from([(Some(0.0), Some(1.0))]));
+        let sample_above = OVector::from([1.5]);
+        let clamped = domain.clamp::<U1, U1>(&sample_above.as_view());
+        assert_eq!(clamped[0], 1.0);
+    }
+
+    #[test]
+    fn test_clamp_below_minimum() {
+        let domain = Domain::new_mdomain(OVector::from([(Some(0.0), Some(1.0))]));
+        let sample_below = OVector::from([-0.5]);
+        let clamped = domain.clamp::<U1, U1>(&sample_below.as_view());
+        assert_eq!(clamped[0], 0.0);
+    }
+
+    #[test]
+    fn test_clamp_half_bounded_lower() {
+        // Test clamping with only lower bound (no upper bound)
         let domain = Domain::new_mdomain(OVector::from([(Some(0.0), None)]));
 
-        // Exactly at lower bound should be contained (inclusive)
-        assert!(domain.contains::<U1, U1>(&OVector::from([0.0]).as_view()));
+        // Value below lower bound should be clamped to lower bound
+        let below = OVector::from([-1.0]);
+        let clamped = domain.clamp::<U1, U1>(&below.as_view());
+        assert_eq!(clamped[0], 0.0);
 
-        // Just above lower bound should be contained
-        assert!(domain.contains::<U1, U1>(&OVector::from([1e-10]).as_view()));
-
-        // Inside should be contained
-        assert!(domain.contains::<U1, U1>(&OVector::from([1e6]).as_view()));
-
-        // Below lower bound should NOT be contained
-        assert!(!domain.contains::<U1, U1>(&OVector::from([-1e-10]).as_view()));
+        // Value above lower bound should remain unchanged (no upper bound)
+        let above = OVector::from([1e6]);
+        let clamped = domain.clamp::<U1, U1>(&above.as_view());
+        assert_eq!(clamped[0], 1e6);
     }
 
     #[test]
-    fn test_domain_half_bounded_upper() {
-        // Verify half-bounded domains work correctly (upper bound only, lower unbounded)
-        // Note: upper bound is inclusive (value <= max)
+    fn test_clamp_half_bounded_upper() {
+        // Test clamping with only upper bound (no lower bound)
         let domain = Domain::new_mdomain(OVector::from([(None, Some(1.0))]));
 
-        // Exactly at upper bound should be contained (inclusive)
-        assert!(domain.contains::<U1, U1>(&OVector::from([1.0]).as_view()));
+        // Value above upper bound should be clamped to upper bound
+        let above = OVector::from([2.0]);
+        let clamped = domain.clamp::<U1, U1>(&above.as_view());
+        assert_eq!(clamped[0], 1.0);
 
-        // Just below upper bound should be contained
-        assert!(domain.contains::<U1, U1>(&OVector::from([1.0 - 1e-10]).as_view()));
-
-        // Inside should be contained
-        assert!(domain.contains::<U1, U1>(&OVector::from([-1e6]).as_view()));
-
-        // Above upper bound should NOT be contained
-        assert!(!domain.contains::<U1, U1>(&OVector::from([1.0 + 1e-10]).as_view()));
+        // Value below upper bound should remain unchanged (no lower bound)
+        let below = OVector::from([-1e6]);
+        let clamped = domain.clamp::<U1, U1>(&below.as_view());
+        assert_eq!(clamped[0], -1e6);
     }
 
     #[test]
-    fn test_domain_clamp_with_explicit_bounds() {
+    fn test_clamp_unbounded() {
+        // Test that clamping on unbounded domain returns sample unchanged
+        let domain = Domain::new_udomain(U1);
+
+        let sample = OVector::from([42.0]);
+        let clamped = domain.clamp::<U1, U1>(&sample.as_view());
+        assert_eq!(clamped[0], 42.0);
+    }
+
+    #[test]
+    fn test_clamp_with_explicit_bounds() {
         // Test clamping with explicit lower and upper bounds
         let domain = Domain::new_mdomain(OVector::from([(Some(0.0), Some(1.0))]));
 
@@ -380,44 +373,56 @@ mod tests {
     }
 
     #[test]
-    fn test_domain_clamp_unbounded() {
-        // Test that clamping on unbounded domain returns sample unchanged
-        let domain = Domain::new_udomain(U1);
-
-        let sample = OVector::from([42.0]);
-        let clamped = domain.clamp::<U1, U1>(&sample.as_view());
-        assert_eq!(clamped[0], 42.0);
+    fn test_contains_unbounded() {
+        let domain: Domain<f64, U1> = Domain::UDomain(U1);
+        let sample = OVector::from([-1e6]);
+        assert!(domain.contains::<U1, U1>(&sample.as_view()));
     }
 
     #[test]
-    fn test_domain_clamp_half_bounded_lower() {
-        // Test clamping with only lower bound (no upper bound)
+    fn test_half_bounded_lower() {
+        // Verify half-bounded domains work correctly (lower bound only, upper unbounded)
+        // Note: lower bound is inclusive (value >= min)
         let domain = Domain::new_mdomain(OVector::from([(Some(0.0), None)]));
 
-        // Value below lower bound should be clamped to lower bound
-        let below = OVector::from([-1.0]);
-        let clamped = domain.clamp::<U1, U1>(&below.as_view());
-        assert_eq!(clamped[0], 0.0);
+        // Exactly at lower bound should be contained (inclusive)
+        assert!(domain.contains::<U1, U1>(&OVector::from([0.0]).as_view()));
 
-        // Value above lower bound should remain unchanged (no upper bound)
-        let above = OVector::from([1e6]);
-        let clamped = domain.clamp::<U1, U1>(&above.as_view());
-        assert_eq!(clamped[0], 1e6);
+        // Just above lower bound should be contained
+        assert!(domain.contains::<U1, U1>(&OVector::from([1e-10]).as_view()));
+
+        // Inside should be contained
+        assert!(domain.contains::<U1, U1>(&OVector::from([1e6]).as_view()));
+
+        // Below lower bound should NOT be contained
+        assert!(!domain.contains::<U1, U1>(&OVector::from([-1e-10]).as_view()));
     }
 
     #[test]
-    fn test_domain_clamp_half_bounded_upper() {
-        // Test clamping with only upper bound (no lower bound)
+    fn test_half_bounded_upper() {
+        // Verify half-bounded domains work correctly (upper bound only, lower unbounded)
+        // Note: upper bound is inclusive (value <= max)
         let domain = Domain::new_mdomain(OVector::from([(None, Some(1.0))]));
 
-        // Value above upper bound should be clamped to upper bound
-        let above = OVector::from([2.0]);
-        let clamped = domain.clamp::<U1, U1>(&above.as_view());
-        assert_eq!(clamped[0], 1.0);
+        // Exactly at upper bound should be contained (inclusive)
+        assert!(domain.contains::<U1, U1>(&OVector::from([1.0]).as_view()));
 
-        // Value below upper bound should remain unchanged (no lower bound)
-        let below = OVector::from([-1e6]);
-        let clamped = domain.clamp::<U1, U1>(&below.as_view());
-        assert_eq!(clamped[0], -1e6);
+        // Just below upper bound should be contained
+        assert!(domain.contains::<U1, U1>(&OVector::from([1.0 - 1e-10]).as_view()));
+
+        // Inside should be contained
+        assert!(domain.contains::<U1, U1>(&OVector::from([-1e6]).as_view()));
+
+        // Above upper bound should NOT be contained
+        assert!(!domain.contains::<U1, U1>(&OVector::from([1.0 + 1e-10]).as_view()));
+    }
+
+    #[test]
+    fn test_maximum_values() {
+        let domain =
+            Domain::new_mdomain(OVector::from([(Some(0.0), Some(1.0)), (Some(-5.0), None)]));
+        let maxes = domain.maximum_values();
+        assert_eq!(maxes[0], Some(1.0));
+        assert_eq!(maxes[1], None);
     }
 }

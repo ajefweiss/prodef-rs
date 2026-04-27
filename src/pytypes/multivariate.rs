@@ -2,8 +2,8 @@ use crate::{
     multivariate::MultivariateDensity,
     pytypes::{Float, PyUnivariate},
 };
-use nalgebra::{DefaultAllocator, Dim, OVector, U1, allocator::Allocator};
-use pyo3::{PyResult, exceptions::PyTypeError, prelude::*, types::PyList};
+use nalgebra::{DefaultAllocator, Dim, Dyn, OVector, U1, allocator::Allocator};
+use pyo3::{Bound, PyResult, exceptions::PyTypeError, prelude::*, types::PyList};
 
 /// A multivariate density for use in Python.
 #[derive(Clone)]
@@ -14,21 +14,25 @@ pub struct PyMultivariate {
 }
 
 impl PyMultivariate {
-    /// Create a [`MultivariateDensity`] from self.
-    pub fn as_multivariate_density<N: Dim>(&self) -> MultivariateDensity<Float, N>
-    where
-        DefaultAllocator: Allocator<N>,
-    {
-        MultivariateDensity::new(OVector::from_iterator_generic(
-            N::from_usize(self.uvpdfs.len()),
-            U1,
-            self.uvpdfs.iter().map(|u| u.density().clone()),
-        ))
-    }
-
     /// Return a reference to the underlying univariate densities.
     pub fn uvpdfs(&self) -> &Vec<PyUnivariate> {
         &self.uvpdfs
+    }
+}
+
+impl From<MultivariateDensity<Float, Dyn>> for PyMultivariate {
+    /// Convert a [`MultivariateDensity`] with runtime dimensions to a [`PyMultivariate`].
+    fn from(dist: MultivariateDensity<Float, Dyn>) -> Self {
+        let uvpdfs = dist
+            .marginals()
+            .iter()
+            .enumerate()
+            .map(|(i, uv)| {
+                let name = format!("marginal_{}", i);
+                PyUnivariate::new(name, uv.clone())
+            })
+            .collect();
+        Self { uvpdfs }
     }
 }
 

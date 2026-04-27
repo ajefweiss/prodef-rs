@@ -1,11 +1,10 @@
 mod normal;
 
+use crate::Domain;
 use nalgebra::{DefaultAllocator, Dim, Dyn, OMatrix, OVector, RealField, allocator::Allocator};
 use rand::RngExt;
 use rand_distr::{Uniform, uniform::SampleUniform};
 use serde::{Deserialize, Serialize};
-
-use crate::Domain;
 
 /// A non-parametric distribution defined by a population of `D`-dimensional particles.
 ///

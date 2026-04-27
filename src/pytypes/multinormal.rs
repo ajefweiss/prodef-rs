@@ -1,7 +1,7 @@
 use crate::{Domain, multinormal::MultivariateNormalDensity, pytypes::Float};
 use nalgebra::{DVector, Dyn, U1};
 use numpy::{PyReadonlyArray1, PyReadonlyArray2};
-use pyo3::{PyResult, exceptions::PyTypeError, prelude::*, types::PyList};
+use pyo3::{Bound, PyResult, exceptions::PyTypeError, prelude::*, types::PyList};
 
 /// A multinormal density for use in Python.
 #[derive(Clone)]
@@ -10,9 +10,16 @@ pub struct PyMultivariateNormal {
     mvnpdf: MultivariateNormalDensity<Float, Dyn>,
 }
 
-impl PyMultivariateNormal {
-    /// Return a reference to the underlying [`MultivariateNormalDensity`].
-    pub fn as_multinormal_density(&self) -> &MultivariateNormalDensity<Float, Dyn> {
+impl From<MultivariateNormalDensity<Float, Dyn>> for PyMultivariateNormal {
+    /// Convert a [`MultivariateNormalDensity`] to a [`PyMultivariateNormal`].
+    fn from(mvnpdf: MultivariateNormalDensity<Float, Dyn>) -> Self {
+        Self { mvnpdf }
+    }
+}
+
+impl AsRef<MultivariateNormalDensity<Float, Dyn>> for PyMultivariateNormal {
+    /// Get a reference to the underlying [`MultivariateNormalDensity`].
+    fn as_ref(&self) -> &MultivariateNormalDensity<Float, Dyn> {
         &self.mvnpdf
     }
 }

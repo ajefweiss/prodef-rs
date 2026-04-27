@@ -1,3 +1,4 @@
+/// Converts a value to `T`.
 macro_rules! tval {
     ($expr:expr, usize) => {
         T::from_usize($expr).unwrap()

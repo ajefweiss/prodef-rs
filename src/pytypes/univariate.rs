@@ -1,9 +1,9 @@
 use crate::{
-    multivariate::{
+    pytypes::Float,
+    univariate::{
         ConstantDensity, CosineDensity, LogUniformDensity, NormalDensity, UniformDensity,
         UnivariateDensity,
     },
-    pytypes::Float,
 };
 use pyo3::{PyResult, exceptions::PyValueError, prelude::*, types::PyType};
 
@@ -25,6 +25,26 @@ impl PyUnivariate {
     /// Return the parameter name.
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Create a new [`PyUnivariate`] with a given name and density.
+    pub fn new(name: String, density: UnivariateDensity<Float>) -> Self {
+        Self { name, density }
+    }
+}
+
+impl From<UnivariateDensity<Float>> for PyUnivariate {
+    /// Convert a [`UnivariateDensity`] to a [`PyUnivariate`] with an auto-generated name.
+    fn from(density: UnivariateDensity<Float>) -> Self {
+        let name = match &density {
+            UnivariateDensity::Constant(_) => "constant".to_string(),
+            UnivariateDensity::Cosine(_) => "cosine".to_string(),
+            UnivariateDensity::Lognormal(_) => "lognormal".to_string(),
+            UnivariateDensity::Loguniform(_) => "loguniform".to_string(),
+            UnivariateDensity::Normal(_) => "normal".to_string(),
+            UnivariateDensity::Uniform(_) => "uniform".to_string(),
+        };
+        Self { name, density }
     }
 }
 
@@ -63,6 +83,9 @@ impl PyUnivariate {
                 (Some(constant.constant()), Some(constant.constant()))
             }
             UnivariateDensity::Cosine(cosine) => (Some(cosine.minimum()), Some(cosine.maximum())),
+            UnivariateDensity::Lognormal(log_normal) => {
+                (Some(log_normal.minimum()), Some(log_normal.maximum()))
+            }
             UnivariateDensity::Loguniform(log_uniform) => {
                 (Some(log_uniform.minimum()), Some(log_uniform.maximum()))
             }
@@ -132,6 +155,7 @@ impl PyUnivariate {
         match &self.density {
             UnivariateDensity::Constant(_) => "constant",
             UnivariateDensity::Cosine(_) => "cosine",
+            UnivariateDensity::Lognormal(_) => "lognormal",
             UnivariateDensity::Loguniform(_) => "loguniform",
             UnivariateDensity::Normal(_) => "normal",
             UnivariateDensity::Uniform(_) => "uniform",

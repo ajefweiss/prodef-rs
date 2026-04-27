@@ -3,7 +3,7 @@ use crate::{
     pytypes::{Float, PyMultivariate, PyMultivariateNormal, PyUnivariate},
 };
 use numpy::{PyArray2, ToPyArray};
-use pyo3::{PyResult, prelude::*, types::PyType};
+use pyo3::{Bound, PyResult, prelude::*, types::PyType};
 use rand_xoshiro::{Xoshiro256PlusPlus, rand_core::SeedableRng};
 
 /// A random number generator for use in Python.
@@ -97,7 +97,7 @@ impl PyMultivariateNormal {
         rng: &mut PySamplingRng,
         mode: &PySamplingMode,
     ) -> Option<Bound<'py, PyArray2<Float>>> {
-        self.as_multinormal_density()
+        self.as_ref()
             .sample(&mut rng.0, &mode.0)
             .map(|sample| sample.to_pyarray(py))
     }

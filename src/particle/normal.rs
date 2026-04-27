@@ -117,6 +117,56 @@ where
     }
 }
 
+impl<T, D> Density<T, D> for ParticleDensity<T, D, MultivariateNormalDensity<T, D>>
+where
+    T: RealField + SampleUniform + Sum,
+    D: Dim,
+    DefaultAllocator: Allocator<D> + Allocator<U1, D> + Allocator<D, D> + Allocator<D, Dyn>,
+    StandardNormal: Distribution<T>,
+{
+    fn density<RStride: Dim, CStride: Dim>(
+        &self,
+        sample: &VectorView<T, D, RStride, CStride>,
+    ) -> Option<T> {
+        (&self).density(sample)
+    }
+
+    fn domain(&self) -> Domain<T, D> {
+        (&self).domain().clone()
+    }
+
+    fn mean(&self) -> OVector<T, D> {
+        (&self).mean()
+    }
+
+    fn sample(&self, rng: &mut impl RngExt, mode: &SamplingMode) -> Option<OVector<T, D>> {
+        (&self).sample(rng, mode)
+    }
+
+    fn sample_iter(&self, rng: &mut impl RngExt) -> impl Iterator<Item = Option<OVector<T, D>>> {
+        let particle = self.sample_particle(rng);
+
+        repeat_with(move || {
+            let candidate = &particle
+                + (&self.kernel)
+                    .sample(rng, &SamplingMode::SingleAttempt)
+                    .expect("particle kernel should use an unbounded domain")
+                - &self.kernel.mean;
+
+            // Check if sample is within domain bounds
+            if self.domain.contains(&candidate.as_view()) {
+                Some(candidate)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn variance(&self) -> OVector<T, D> {
+        (&self).variance()
+    }
+}
+
 impl<T, D> Density<T, D> for &ParticleDensity<T, D, MultivariateNormalDensity<T, D>>
 where
     T: RealField + SampleUniform + Sum,
@@ -177,6 +227,33 @@ where
         self.domain.clone()
     }
 
+    fn mean(&self) -> OVector<T, D> {
+        // Compute the weighted mean of particles
+        match &self.opt_weights {
+            Some(weights) => OVector::from_iterator_generic(
+                self.particles.shape_generic().0,
+                U1,
+                (0..self.particles.nrows()).map(|i| {
+                    self.particles
+                        .row(i)
+                        .iter()
+                        .zip(weights.iter())
+                        .map(|(p, w)| p.clone() * w.clone())
+                        .sum::<T>()
+                }),
+            ),
+            None => {
+                let count = tval!(self.particles.ncols(), usize);
+                OVector::from_iterator_generic(
+                    self.particles.shape_generic().0,
+                    U1,
+                    (0..self.particles.nrows())
+                        .map(|i| self.particles.row(i).iter().cloned().sum::<T>() / count.clone()),
+                )
+            }
+        }
+    }
+
     fn sample(&self, rng: &mut impl RngExt, mode: &SamplingMode) -> Option<OVector<T, D>> {
         self.rejection_sample(rng, mode)
     }
@@ -191,12 +268,54 @@ where
                     .expect("particle kernel should use an unbounded domain")
                 - &self.kernel.mean;
 
+            // Check if sample is within domain bounds
             if self.domain.contains(&candidate.as_view()) {
                 Some(candidate)
             } else {
                 None
             }
         })
+    }
+
+    fn variance(&self) -> OVector<T, D> {
+        let mean = self.mean();
+
+        // Compute weighted variance for each dimension
+        match &self.opt_weights {
+            Some(weights) => OVector::from_iterator_generic(
+                self.particles.shape_generic().0,
+                U1,
+                (0..self.particles.nrows()).map(|i| {
+                    self.particles
+                        .row(i)
+                        .iter()
+                        .zip(weights.iter())
+                        .map(|(p, w)| {
+                            let diff = p.clone() - mean[i].clone();
+                            w.clone() * diff.clone() * diff
+                        })
+                        .sum::<T>()
+                }),
+            ),
+            None => {
+                let count = tval!(self.particles.ncols(), usize);
+                OVector::from_iterator_generic(
+                    self.particles.shape_generic().0,
+                    U1,
+                    (0..self.particles.nrows()).map(|i| {
+                        self.particles
+                            .row(i)
+                            .iter()
+                            .map(|p| {
+                                let diff = p.clone() - mean[i].clone();
+                                diff.clone() * diff
+                            })
+                            .sum::<T>()
+                            / count.clone()
+                    }),
+                )
+            }
+        }
     }
 }
 
@@ -215,383 +334,5 @@ where
                 .sample(rng, &SamplingMode::UntilValidNoLimit)
                 .expect("particle kernel should use an unbounded domain")
             - &self.kernel.mean
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::Domain;
-    use approx::ulps_eq;
-    use nalgebra::{Matrix, SVector, U2, U3, VecStorage};
-    use rand::{RngExt, SeedableRng};
-    use rand_xoshiro::Xoshiro256PlusPlus;
-
-    #[test]
-    fn test_particle_density() {
-        let mut rng = Xoshiro256PlusPlus::seed_from_u64(1);
-        let uniform = StandardNormal;
-
-        let array_0 = Matrix::<f64, U2, Dyn, VecStorage<f64, U2, Dyn>>::from_iterator(
-            10000,
-            (0..20000).map(|idx| {
-                if idx % 2 == 0 {
-                    0.1 + rng.sample::<f64, StandardNormal>(uniform)
-                } else {
-                    0.25 + rng.sample::<f64, StandardNormal>(uniform)
-                }
-            }),
-        );
-
-        let mvpdf_0 = MultivariateNormalDensity::from_vectors::<Dyn, U2>(
-            &array_0.as_view(),
-            Domain::new_mdomain(SVector::from([
-                (Some(-0.75), Some(0.75)),
-                (Some(-0.75), Some(0.75)),
-            ])),
-            None,
-        )
-        .unwrap();
-
-        let ptpdf_0 = ParticleDensity::from_vectors::<U1, U2>(
-            &array_0.as_view(),
-            Domain::new_mdomain(SVector::from([
-                (Some(-0.75), Some(0.75)),
-                (Some(-0.75), Some(0.75)),
-            ])),
-            None,
-            None,
-        )
-        .unwrap();
-
-        assert!(ulps_eq!(
-            (&mvpdf_0)
-                .density::<U1, U2>(&SVector::from([0.2, 0.35]).as_view())
-                .unwrap(),
-            0.161284,
-            epsilon = 1e-5,
-            max_ulps = 5
-        ));
-
-        assert!(ulps_eq!(
-            (&ptpdf_0)
-                .density::<U1, U2>(&SVector::from([0.2, 0.35]).as_view())
-                .unwrap(),
-            0.155155,
-            epsilon = 1e-5,
-            max_ulps = 5
-        ));
-
-        let mut rng = Xoshiro256PlusPlus::seed_from_u64(1);
-
-        let array = Matrix::<f64, U3, Dyn, VecStorage<f64, U3, Dyn>>::from_iterator(
-            10000,
-            (0..30000).map(|idx| {
-                if idx % 3 == 0 {
-                    0.1 + rng.sample::<f64, StandardNormal>(uniform)
-                } else if idx % 3 == 1 {
-                    0.0
-                } else {
-                    0.25 + rng.sample::<f64, StandardNormal>(uniform)
-                }
-            }),
-        );
-
-        let ptpdf = ParticleDensity::from_vectors::<U1, U3>(
-            &array.as_view(),
-            Domain::new_mdomain(SVector::from([
-                (Some(-0.75), Some(0.75)),
-                (Some(-0.75), Some(0.75)),
-                (Some(-0.75), Some(0.75)),
-            ])),
-            None,
-            None,
-        )
-        .unwrap();
-
-        assert!(
-            (&ptpdf)
-                .density::<U1, U3>(&SVector::from([0.2, -0.85, 0.35]).as_view())
-                .is_none()
-        );
-
-        assert!(ulps_eq!(
-            (&ptpdf)
-                .density::<U1, U3>(&SVector::from([0.2, 0.0, 0.35]).as_view())
-                .unwrap(),
-            0.155147,
-            epsilon = 1e-5,
-            max_ulps = 5
-        ));
-
-        assert!(ulps_eq!(
-            (&ptpdf)
-                .sample(&mut rng, &SamplingMode::UntilValid { max_attempts: 100 })
-                .unwrap(),
-            SVector::from([-0.5195214192763392, 0.0, -0.4065653428511528,]),
-            epsilon = 1e-5,
-            max_ulps = 5
-        ));
-    }
-
-    #[test]
-    fn test_particle_count() {
-        // Test that particle count is preserved
-        let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-        let uniform = StandardNormal;
-
-        let n_particles = 1000;
-        let array = Matrix::<f64, U2, Dyn, VecStorage<f64, U2, Dyn>>::from_iterator(
-            n_particles,
-            (0..n_particles * 2).map(|idx| {
-                if idx % 2 == 0 {
-                    0.1 + rng.sample::<f64, StandardNormal>(uniform)
-                } else {
-                    0.25 + rng.sample::<f64, StandardNormal>(uniform)
-                }
-            }),
-        );
-
-        let ptpdf = ParticleDensity::from_vectors::<U1, U2>(
-            &array.as_view(),
-            Domain::new_udomain(U2),
-            None,
-            None,
-        )
-        .unwrap();
-
-        // Check that particle count matches
-        assert_eq!(ptpdf.particles.ncols(), n_particles);
-    }
-
-    #[test]
-    fn test_particle_weighted_sampling() {
-        // Test particle density with explicit weights
-        let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-        let uniform = StandardNormal;
-
-        let n_particles = 100;
-        let array = Matrix::<f64, U1, Dyn, VecStorage<f64, U1, Dyn>>::from_iterator(
-            n_particles,
-            (0..n_particles).map(|_| rng.sample::<f64, StandardNormal>(uniform)),
-        );
-
-        // Create weights favoring first particles
-        let weights = DVector::from_iterator(
-            n_particles,
-            (0..n_particles).map(|i| if i < n_particles / 2 { 2.0 } else { 1.0 }),
-        );
-
-        let ptpdf = ParticleDensity::from_vectors::<U1, U1>(
-            &array.as_view(),
-            Domain::new_udomain(U1),
-            Some(weights.as_slice()),
-            None,
-        )
-        .unwrap();
-
-        // Test that samples can be drawn
-        let mut samples = Vec::new();
-        for _ in 0..50 {
-            if let Some(sample) = (&ptpdf).sample(&mut rng, &SamplingMode::SingleAttempt) {
-                samples.push(sample[0]);
-            }
-        }
-
-        // Ensure some samples were successfully drawn
-        assert!(!samples.is_empty());
-    }
-
-    #[test]
-    fn test_particle_domain_enforcement() {
-        // Test that particles outside domain return None
-        let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-        let uniform = StandardNormal;
-
-        let array = Matrix::<f64, U2, Dyn, VecStorage<f64, U2, Dyn>>::from_iterator(
-            100,
-            (0..200).map(|idx| {
-                if idx % 2 == 0 {
-                    0.1 + rng.sample::<f64, StandardNormal>(uniform)
-                } else {
-                    0.25 + rng.sample::<f64, StandardNormal>(uniform)
-                }
-            }),
-        );
-
-        let ptpdf = ParticleDensity::from_vectors::<U1, U2>(
-            &array.as_view(),
-            Domain::new_mdomain(SVector::from([
-                (Some(0.0), Some(0.5)),
-                (Some(0.0), Some(0.5)),
-            ])),
-            None,
-            None,
-        )
-        .unwrap();
-
-        // Test point outside domain
-        let outside_sample = SVector::from([0.6, 0.3]);
-        assert!(
-            (&ptpdf)
-                .density::<U1, U2>(&outside_sample.as_view())
-                .is_none()
-        );
-
-        // Test point inside domain
-        let inside_sample = SVector::from([0.3, 0.3]);
-        assert!(
-            (&ptpdf)
-                .density::<U1, U2>(&inside_sample.as_view())
-                .is_some()
-        );
-    }
-
-    #[test]
-    fn test_particle_statistical_validation_weighted_samples() {
-        // Test that particle sampling generates valid samples
-        let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-
-        // Create two clusters of particles
-        let array = Matrix::<f64, U1, Dyn, VecStorage<f64, U1, Dyn>>::from_iterator(
-            100,
-            (0..100).map(|i| if i < 50 { -1.0 } else { 1.0 }),
-        );
-
-        // Give more weight to positive cluster
-        let weights: Vec<f64> = (0..100).map(|i| if i < 50 { 1.0 } else { 3.0 }).collect();
-
-        let ptpdf = ParticleDensity::from_vectors::<U1, U1>(
-            &array.as_view(),
-            Domain::new_udomain(U1),
-            Some(&weights),
-            None,
-        )
-        .unwrap();
-
-        // Generate samples and verify they're produced
-        let mut sample_count = 0;
-
-        for _ in 0..500 {
-            if let Some(_sample) =
-                (&ptpdf).sample(&mut rng, &SamplingMode::UntilValid { max_attempts: 512 })
-            {
-                sample_count += 1;
-            }
-        }
-
-        // Verify we can successfully sample from weighted particle distribution
-        assert!(
-            sample_count > 100,
-            "Should generate many samples from weighted particle distribution, got {}",
-            sample_count
-        );
-    }
-
-    #[test]
-    fn test_particle_statistical_validation_kernel_smoothness() {
-        // Test that particle density evaluates correctly at particle locations
-        // Create particles at two locations
-        let array = Matrix::<f64, U2, Dyn, VecStorage<f64, U2, Dyn>>::from_iterator(
-            2,
-            vec![0.0, 0.0, 2.0, 2.0],
-        );
-
-        let ptpdf = ParticleDensity::from_vectors::<U1, U2>(
-            &array.as_view(),
-            Domain::new_udomain(U2),
-            None,
-            None,
-        )
-        .unwrap();
-
-        // Test that density is non-zero at multiple points
-        let density_at_particle = (&ptpdf)
-            .density::<U1, U2>(&SVector::from([0.0, 0.0]).as_view())
-            .unwrap();
-
-        let density_at_second_particle = (&ptpdf)
-            .density::<U1, U2>(&SVector::from([2.0, 2.0]).as_view())
-            .unwrap();
-
-        let density_at_midpoint = (&ptpdf)
-            .density::<U1, U2>(&SVector::from([1.0, 1.0]).as_view())
-            .unwrap();
-
-        // All should be positive
-        assert!(
-            density_at_particle > 0.0,
-            "Density at first particle should be positive, got {}",
-            density_at_particle
-        );
-        assert!(
-            density_at_second_particle > 0.0,
-            "Density at second particle should be positive, got {}",
-            density_at_second_particle
-        );
-        assert!(
-            density_at_midpoint > 0.0,
-            "Density at midpoint should be positive, got {}",
-            density_at_midpoint
-        );
-    }
-
-    #[test]
-    fn test_particle_statistical_validation_ensemble_statistics() {
-        // Test that particle ensemble sampling preserves ensemble statistics
-        let mut rng = Xoshiro256PlusPlus::seed_from_u64(44);
-        let uniform = StandardNormal;
-
-        // Create ensemble with known mean
-        let ensemble_mean = 0.5;
-        let n_particles = 500;
-        let array = Matrix::<f64, U1, Dyn, VecStorage<f64, U1, Dyn>>::from_iterator(
-            n_particles,
-            (0..n_particles)
-                .map(|_| ensemble_mean + rng.sample::<f64, StandardNormal>(uniform) * 0.1),
-        );
-
-        let ptpdf = ParticleDensity::from_vectors::<U1, U1>(
-            &array.as_view(),
-            Domain::new_udomain(U1),
-            None,
-            None,
-        )
-        .unwrap();
-
-        // Sample from particle density
-        let samples: Vec<f64> = (0..5000)
-            .filter_map(|_| {
-                (&ptpdf)
-                    .sample(&mut rng, &SamplingMode::UntilValid { max_attempts: 512 })
-                    .map(|s| s[0])
-            })
-            .collect();
-
-        assert!(!samples.is_empty(), "Should generate samples");
-
-        let sample_mean: f64 = samples.iter().sum::<f64>() / samples.len() as f64;
-
-        // Sample mean should be close to ensemble mean
-        assert!(
-            (sample_mean - ensemble_mean).abs() < 0.1,
-            "Sample mean ({}) should be close to ensemble mean ({})",
-            sample_mean,
-            ensemble_mean
-        );
-
-        // Estimate variance from samples
-        let sample_variance: f64 = samples
-            .iter()
-            .map(|x| (x - sample_mean).powi(2))
-            .sum::<f64>()
-            / samples.len() as f64;
-
-        // Variance should be reasonable (particles have std 0.1, kernel adds some)
-        assert!(
-            sample_variance > 0.01 && sample_variance < 0.3,
-            "Sample variance ({}) should be reasonable for small particle std",
-            sample_variance
-        );
     }
 }
