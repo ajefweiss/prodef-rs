@@ -83,7 +83,7 @@ fn bench_multivariate_sample(c: &mut Criterion) {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
         b.iter(|| {
             (0..1000)
-                .map(|_| (&constant).sample(&mut rng, &SamplingMode::SingleAttempt))
+                .map(|_| constant.sample(&mut rng, &SamplingMode::SingleAttempt))
                 .last()
         })
     });
@@ -92,7 +92,7 @@ fn bench_multivariate_sample(c: &mut Criterion) {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
         b.iter(|| {
             (0..1000)
-                .map(|_| (&normal).sample(&mut rng, &SamplingMode::SingleAttempt))
+                .map(|_| normal.sample(&mut rng, &SamplingMode::SingleAttempt))
                 .last()
         })
     });
@@ -101,7 +101,7 @@ fn bench_multivariate_sample(c: &mut Criterion) {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
         b.iter(|| {
             (0..1000)
-                .map(|_| (&uniform).sample(&mut rng, &SamplingMode::SingleAttempt))
+                .map(|_| uniform.sample(&mut rng, &SamplingMode::SingleAttempt))
                 .last()
         })
     });
@@ -110,7 +110,7 @@ fn bench_multivariate_sample(c: &mut Criterion) {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
         b.iter(|| {
             (0..1000)
-                .map(|_| (&cosine).sample(&mut rng, &SamplingMode::SingleAttempt))
+                .map(|_| cosine.sample(&mut rng, &SamplingMode::SingleAttempt))
                 .last()
         })
     });
@@ -119,7 +119,7 @@ fn bench_multivariate_sample(c: &mut Criterion) {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
         b.iter(|| {
             (0..1000)
-                .map(|_| (&loguniform).sample(&mut rng, &SamplingMode::SingleAttempt))
+                .map(|_| loguniform.sample(&mut rng, &SamplingMode::SingleAttempt))
                 .last()
         })
     });
@@ -141,33 +141,27 @@ fn bench_multivariate_sample_iter(c: &mut Criterion) {
 
     group.bench_function("constant_sample_iter", |b| {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-        b.iter(|| (&constant).sample_iter(&mut rng).take(100).flatten().last())
+        b.iter(|| constant.sample_iter(&mut rng).take(100).flatten().last())
     });
 
     group.bench_function("normal_sample_iter", |b| {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-        b.iter(|| (&normal).sample_iter(&mut rng).take(100).flatten().last())
+        b.iter(|| normal.sample_iter(&mut rng).take(100).flatten().last())
     });
 
     group.bench_function("uniform_sample_iter", |b| {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-        b.iter(|| (&uniform).sample_iter(&mut rng).take(100).flatten().last())
+        b.iter(|| uniform.sample_iter(&mut rng).take(100).flatten().last())
     });
 
     group.bench_function("cosine_sample_iter", |b| {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-        b.iter(|| (&cosine).sample_iter(&mut rng).take(100).flatten().last())
+        b.iter(|| cosine.sample_iter(&mut rng).take(100).flatten().last())
     });
 
     group.bench_function("loguniform_sample_iter", |b| {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-        b.iter(|| {
-            (&loguniform)
-                .sample_iter(&mut rng)
-                .take(100)
-                .flatten()
-                .last()
-        })
+        b.iter(|| loguniform.sample_iter(&mut rng).take(100).flatten().last())
     });
 
     group.finish();

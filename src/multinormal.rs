@@ -4,7 +4,7 @@ use crate::{Density, RejectionSampler, SamplingMode, domain::Domain, macros::tva
 use itertools::{Itertools, zip_eq};
 use nalgebra::{
     Const, DMatrix, DVector, DefaultAllocator, Dim, Dyn, MatrixView, OMatrix, OVector, RealField,
-    U1, VectorView, allocator::Allocator,
+    Scalar, U1, VectorView, allocator::Allocator,
 };
 use rand::RngExt;
 use rand_distr::{Distribution, StandardNormal};
@@ -100,7 +100,7 @@ use std::{
 ))]
 pub struct MultivariateNormalDensity<T, D>
 where
-    T: RealField,
+    T: Scalar,
     D: Dim,
     DefaultAllocator: Allocator<D> + Allocator<U1, D> + Allocator<D, D>,
 {
@@ -166,7 +166,7 @@ where
         }
 
         // Construct the covariance matrix.
-        let mut covariance = OMatrix::<T, D, D>::from_iterator_generic(
+        let covariance_half = OMatrix::<T, D, D>::from_iterator_generic(
             n_dim,
             n_dim,
             (0..(vectors.nrows().pow(2))).map(|idx| {
@@ -193,7 +193,7 @@ where
         );
 
         // Fill up the other side of the covariance matrix.
-        covariance += covariance.transpose() - OMatrix::from_diagonal(&covariance.diagonal());
+        let covariance = covariance_half.clone() + covariance_half.transpose() - OMatrix::from_diagonal(&covariance_half.diagonal());
 
         let mut mean = vectors.column_mean();
 
@@ -318,7 +318,15 @@ where
         x: &VectorView<T, D, RStride, CStride>,
     ) -> T {
         let xm = &(x - &self.mean);
+        (xm.transpose() * &self.inverse * xm)[(0, 0)].clone()
+    }
 
+    /// Returns the (squared) Mahalanobis distance (copy variant available).
+    pub fn mahalanobis_distance_sq_copy<RStride: Dim, CStride: Dim>(
+        &self,
+        x: &VectorView<T, D, RStride, CStride>,
+    ) -> T {
+        let xm = &(x - &self.mean);
         (xm.transpose() * &self.inverse * xm)[(0, 0)].clone()
     }
 
@@ -439,9 +447,21 @@ where
             .diagonal()
             .fold(0, |acc, next| if next != T::zero() { acc + 1 } else { acc })
     }
+
+    // Set the variance of the selected dimension to zero.
+    pub fn set_zero(&mut self, dim: usize) {
+        self.covariance.column_mut(dim).fill(T::zero());
+        self.covariance.row_mut(dim).fill(T::zero());
+
+        self.inverse.column_mut(dim).fill(T::zero());
+        self.inverse.row_mut(dim).fill(T::zero());
+
+        self.ltm.column_mut(dim).fill(T::zero());
+        self.ltm.row_mut(dim).fill(T::zero());
+    }
 }
 
-impl<T, D> Density<T, D> for &MultivariateNormalDensity<T, D>
+impl<T, D> Density<T, D> for MultivariateNormalDensity<T, D>
 where
     T: RealField,
     D: Dim,
@@ -734,7 +754,7 @@ where
     let mu_y = zip_eq(y_iter.clone(), w_iter.clone())
         .map(|(val_y, val_w)| val_y.clone() * val_w.clone())
         .sum::<T>()
-        / wsum.clone();
+        / wsum;
 
     Some(
         zip_eq(x_iter, zip_eq(y_iter, w_iter))

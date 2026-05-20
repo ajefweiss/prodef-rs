@@ -1,7 +1,7 @@
 use std::iter::repeat;
 
 use crate::{Density, SamplingMode, domain::Domain};
-use nalgebra::{Dim, OVector, RealField, SVector, U1, VectorView};
+use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ConstantDensity<T>(Domain<T, U1>)
 where
-    T: RealField;
+    T: Scalar;
 
 impl<T> ConstantDensity<T>
 where
@@ -35,7 +35,7 @@ where
     }
 }
 
-impl<T> Density<T, U1> for &ConstantDensity<T>
+impl<T> Density<T, U1> for ConstantDensity<T>
 where
     T: RealField,
 {
@@ -76,5 +76,16 @@ where
 
     fn variance(&self) -> SVector<T, 1> {
         SVector::from([T::zero()])
+    }
+}
+
+impl<T: RealField> TryFrom<crate::univariate::UnivariateDensity<T>> for ConstantDensity<T> {
+    type Error = ();
+
+    fn try_from(value: crate::univariate::UnivariateDensity<T>) -> Result<Self, Self::Error> {
+        match value {
+            crate::univariate::UnivariateDensity::Constant(pdf) => Ok(pdf),
+            _ => Err(()),
+        }
     }
 }

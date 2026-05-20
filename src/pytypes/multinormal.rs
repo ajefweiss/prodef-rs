@@ -8,12 +8,24 @@ use pyo3::{Bound, PyResult, exceptions::PyTypeError, prelude::*, types::PyList};
 #[pyclass(from_py_object, name = "MultiNormal")]
 pub struct PyMultivariateNormal {
     mvnpdf: MultivariateNormalDensity<Float, Dyn>,
+    #[pyo3(get)]
+    names: Vec<String>,
 }
 
 impl From<MultivariateNormalDensity<Float, Dyn>> for PyMultivariateNormal {
     /// Convert a [`MultivariateNormalDensity`] to a [`PyMultivariateNormal`].
     fn from(mvnpdf: MultivariateNormalDensity<Float, Dyn>) -> Self {
-        Self { mvnpdf }
+        let dim = mvnpdf.covariance_matrix().nrows();
+        let names = (0..dim).map(|i| format!("dim_{}", i)).collect();
+        Self { names, mvnpdf }
+    }
+}
+
+impl From<(MultivariateNormalDensity<Float, Dyn>, Vec<String>)> for PyMultivariateNormal {
+    /// Convert a [`MultivariateNormalDensity`] to a [`PyMultivariateNormal`] with custom dimension names.
+    fn from(tuple: (MultivariateNormalDensity<Float, Dyn>, Vec<String>)) -> Self {
+        let (mvnpdf, names) = tuple;
+        Self { names, mvnpdf }
     }
 }
 
@@ -74,13 +86,22 @@ impl PyMultivariateNormal {
             None => Domain::new_udomain(Dyn(matrix.nrows())),
         };
 
-        let result = MultivariateNormalDensity::new(matrix, domain, Some(mean));
+        let result = MultivariateNormalDensity::new(matrix.clone(), domain, Some(mean));
 
         match result {
-            Some(mvnpdf) => Ok(Self { mvnpdf }),
+            Some(mvnpdf) => {
+                let dim = matrix.nrows();
+                let names = (0..dim).map(|i| format!("dim_{}", i)).collect();
+                Ok(Self { names, mvnpdf })
+            }
             None => Err(PyTypeError::new_err(
                 "failed to construct multinormal density, dimensions of the arguments must be consistent",
             )),
         }
+    }
+
+    /// Return the names of the dimensions.
+    pub fn names(&self) -> Vec<String> {
+        self.names.clone()
     }
 }

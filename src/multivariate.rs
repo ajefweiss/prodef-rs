@@ -6,7 +6,8 @@ use crate::{
 };
 use derive_more::IntoIterator;
 use nalgebra::{
-    DefaultAllocator, Dim, OVector, RealField, SVector, U1, VectorView, allocator::Allocator,
+    DefaultAllocator, Dim, OVector, RealField, SVector, Scalar, U1, VectorView,
+    allocator::Allocator,
 };
 use rand::RngExt;
 use rand_distr::{Distribution, StandardNormal, uniform::SampleUniform};
@@ -81,7 +82,7 @@ use std::{f64, fmt::Debug, iter::repeat_with};
 #[serde(bound(deserialize = "OVector<UnivariateDensity<T>, D>: Deserialize<'de>"))]
 pub struct MultivariateDensity<T, D>(#[into_iterator(owned, ref)] OVector<UnivariateDensity<T>, D>)
 where
-    T: RealField,
+    T: Scalar,
     D: Dim,
     DefaultAllocator: Allocator<D>;
 
@@ -103,66 +104,6 @@ where
 }
 
 impl<T, D> Density<T, D> for MultivariateDensity<T, D>
-where
-    T: RealField + SampleUniform,
-    D: Dim,
-    StandardNormal: Distribution<T>,
-    DefaultAllocator: Allocator<D>,
-{
-    fn density<RStride: Dim, CStride: Dim>(
-        &self,
-        sample: &VectorView<T, D, RStride, CStride>,
-    ) -> Option<T> {
-        (&self).density(sample)
-    }
-
-    fn domain(&self) -> Domain<T, D> {
-        (&self).domain().clone()
-    }
-
-    fn mean(&self) -> OVector<T, D> {
-        (&self).mean()
-    }
-
-    fn sample(&self, rng: &mut impl RngExt, mode: &SamplingMode) -> Option<OVector<T, D>> {
-        (&self).sample(rng, mode)
-    }
-
-    fn sample_iter(&self, rng: &mut impl RngExt) -> impl Iterator<Item = Option<OVector<T, D>>> {
-        let n_dim = self.0.shape_generic().0;
-
-        repeat_with(move || {
-            let draw_opts = OVector::<Option<SVector<T, 1>>, D>::from_iterator_generic(
-                n_dim,
-                U1,
-                self.into_iter()
-                    .map(|pdf| pdf.sample(rng, &SamplingMode::SingleAttempt)),
-            );
-
-            if draw_opts.iter().any(|draw| draw.is_none()) {
-                return None;
-            }
-
-            // All samples are guaranteed to be Some due to check above
-            let draw = OVector::<T, D>::from_iterator_generic(
-                n_dim,
-                U1,
-                draw_opts.iter().map(|opt_draw| {
-                    // Safe: we verified no None values exist above
-                    opt_draw.clone().unwrap()[0].clone()
-                }),
-            );
-
-            Some(draw)
-        })
-    }
-
-    fn variance(&self) -> OVector<T, D> {
-        (&self).variance()
-    }
-}
-
-impl<T, D> Density<T, D> for &MultivariateDensity<T, D>
 where
     T: RealField + SampleUniform,
     D: Dim,
@@ -260,7 +201,7 @@ where
                 U1,
                 draw_opts.iter().map(|opt_draw| {
                     // Safe: we verified no None values exist above
-                    opt_draw.clone().unwrap()[0].clone()
+                    opt_draw.as_ref().unwrap()[0].clone()
                 }),
             );
 

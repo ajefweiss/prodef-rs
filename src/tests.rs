@@ -291,7 +291,7 @@ mod uniform {
     #[test]
     fn test_domain_bounded() {
         let dist = UniformDensity::new(0.0, 1.0).unwrap();
-        let domain = (&dist).domain();
+        let domain = dist.domain();
         let sample = SVector::from([0.5]);
         assert!(domain.contains::<U1, U1>(&sample.as_view()));
     }
@@ -314,7 +314,7 @@ mod uniform {
         let dist = UniformDensity::new(0.0, 1.0).unwrap();
         let samples = collect_samples(&dist, N_SAMPLES, RNG_SEED);
         let empirical_mean = compute_sample_mean(&samples);
-        let theoretical_mean = (&dist).mean()[0];
+        let theoretical_mean = dist.mean()[0];
         assert_abs_diff_eq!(empirical_mean, theoretical_mean, epsilon = 0.025);
     }
 
@@ -324,7 +324,7 @@ mod uniform {
         let samples = collect_samples(&dist, N_SAMPLES, RNG_SEED);
         let mean = compute_sample_mean(&samples);
         let empirical_variance = compute_sample_variance(&samples, mean);
-        let theoretical_variance = (&dist).variance()[0];
+        let theoretical_variance = dist.variance()[0];
         assert_abs_diff_eq!(empirical_variance, theoretical_variance, epsilon = 0.025);
     }
 }
@@ -375,7 +375,7 @@ mod normal {
     #[test]
     fn test_domain_unbounded() {
         let dist = NormalDensity::new(0.0, 1.0, None, None).unwrap();
-        let domain = (&dist).domain();
+        let domain = dist.domain();
         // Should accept both small and large values
         let sample_small = SVector::from([-1000.0]);
         let sample_large = SVector::from([1000.0]);
@@ -394,7 +394,7 @@ mod normal {
         let dist = NormalDensity::new(0.0, 1.0, None, None).unwrap();
         let samples = collect_samples(&dist, N_SAMPLES, RNG_SEED);
         let empirical_mean = compute_sample_mean(&samples);
-        let theoretical_mean = (&dist).mean()[0];
+        let theoretical_mean = dist.mean()[0];
         assert_abs_diff_eq!(empirical_mean, theoretical_mean, epsilon = 0.08);
     }
 
@@ -404,7 +404,7 @@ mod normal {
         let samples = collect_samples(&dist, N_SAMPLES, RNG_SEED);
         let mean = compute_sample_mean(&samples);
         let empirical_variance = compute_sample_variance(&samples, mean);
-        let theoretical_variance = (&dist).variance()[0];
+        let theoretical_variance = dist.variance()[0];
         assert_abs_diff_eq!(empirical_variance, theoretical_variance, epsilon = 0.08);
     }
 }
@@ -448,7 +448,7 @@ mod normal_bounded {
         let dist = NormalDensity::new(0.0, 1.0, Some(-3.0), Some(3.0)).unwrap();
         let samples = collect_samples(&dist, N_SAMPLES, RNG_SEED);
         let empirical_mean = compute_sample_mean(&samples);
-        let theoretical_mean = (&dist).mean()[0];
+        let theoretical_mean = dist.mean()[0];
         assert_abs_diff_eq!(empirical_mean, theoretical_mean, epsilon = 0.1);
     }
 
@@ -467,7 +467,7 @@ mod normal_bounded {
     #[test]
     fn test_domain_bounded_inclusive() {
         let dist = NormalDensity::new(0.0, 1.0, Some(-2.0), Some(2.0)).unwrap();
-        let domain = (&dist).domain();
+        let domain = dist.domain();
         // Boundaries should be inclusive
         let at_min = SVector::from([-2.0]);
         let at_max = SVector::from([2.0]);
@@ -510,7 +510,7 @@ mod cosine {
     #[test]
     fn test_domain_bounded() {
         let dist = CosineDensity::new(0.1, 0.2).unwrap();
-        let domain = (&dist).domain();
+        let domain = dist.domain();
         let sample_in = SVector::from([0.15]);
         let sample_out = SVector::from([0.5]);
         assert!(domain.contains::<U1, U1>(&sample_in.as_view()));
@@ -565,7 +565,7 @@ mod lognormal {
     #[test]
     fn test_domain_positive() {
         let dist = LognormalDensity::new(0.0, 1.0, 0.1, 10.0).unwrap();
-        let domain = (&dist).domain();
+        let domain = dist.domain();
         let sample_positive = SVector::from([1.0]);
         let sample_negative = SVector::from([-1.0]);
         assert!(domain.contains::<U1, U1>(&sample_positive.as_view()));
@@ -620,7 +620,7 @@ mod loguniform {
     #[test]
     fn test_domain_positive() {
         let dist = LogUniformDensity::new(0.1, 10.0).unwrap();
-        let domain = (&dist).domain();
+        let domain = dist.domain();
         let sample_positive = SVector::from([1.0]);
         let sample_negative = SVector::from([-1.0]);
         assert!(domain.contains::<U1, U1>(&sample_positive.as_view()));
@@ -783,7 +783,7 @@ mod multinormal {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(RNG_SEED);
         let mode = SamplingMode::default();
         let samples: Vec<_> = (0..N_SAMPLES)
-            .filter_map(|_| (&dist).sample(&mut rng, &mode))
+            .filter_map(|_| dist.sample(&mut rng, &mode))
             .collect();
 
         // Normal distribution is unbounded, so just check we got samples
@@ -800,12 +800,12 @@ mod multinormal {
         let mut rng1 = Xoshiro256PlusPlus::seed_from_u64(RNG_SEED);
         let mode = SamplingMode::default();
         let samples1: Vec<_> = (0..50)
-            .filter_map(|_| (&dist).sample(&mut rng1, &mode))
+            .filter_map(|_| dist.sample(&mut rng1, &mode))
             .collect();
 
         let mut rng2 = Xoshiro256PlusPlus::seed_from_u64(RNG_SEED);
         let samples2: Vec<_> = (0..50)
-            .filter_map(|_| (&dist).sample(&mut rng2, &mode))
+            .filter_map(|_| dist.sample(&mut rng2, &mode))
             .collect();
 
         assert_eq!(
@@ -822,7 +822,7 @@ mod multinormal {
         let dist = MultivariateNormalDensity::new(cov, domain, Some(mean)).unwrap();
 
         let sample = SVector::from([0.0, 0.0]);
-        let density = (&dist).density::<U1, U2>(&sample.as_view());
+        let density = dist.density::<U1, U2>(&sample.as_view());
 
         assert!(density.is_some(), "Density should exist at mean");
         assert!(density.unwrap() > 0.0, "Density at mean should be positive");
@@ -836,12 +836,12 @@ mod multinormal {
         let dist = MultivariateNormalDensity::new(cov, domain, Some(mean)).unwrap();
 
         // Density at mean should exist
-        let density_at_mean = (&dist).density::<U1, U2>(&mean.as_view());
+        let density_at_mean = dist.density::<U1, U2>(&mean.as_view());
         assert!(density_at_mean.is_some(), "Density should exist at mean");
 
         // Density away from mean should still exist (unbounded)
         let sample_away = SVector::from([0.0, 0.0]);
-        let density_away = (&dist).density::<U1, U2>(&sample_away.as_view());
+        let density_away = dist.density::<U1, U2>(&sample_away.as_view());
         assert!(
             density_away.is_some(),
             "Density should exist away from mean"
@@ -1116,7 +1116,7 @@ mod trait_conversions {
 
         // Verify the recovered density works
         let sample = SVector::from([0.5]);
-        let density = (&recovered).density::<U1, U1>(&sample.as_view());
+        let density = recovered.density::<U1, U1>(&sample.as_view());
         assert!(density.is_some(), "Density should evaluate successfully");
         assert_abs_diff_eq!(density.unwrap(), 1.0, epsilon = 1e-10);
     }
@@ -1133,7 +1133,7 @@ mod trait_conversions {
         let recovered: crate::UnivariateDensity<f64> = multivariate.into();
 
         // Verify domain consistency by checking domain bounds
-        let domain_recovered = (&recovered).domain();
+        let domain_recovered = recovered.domain();
         // Normal is unbounded, so max and min should be None
         assert!(domain_recovered.minimum_values()[0].is_none());
         assert!(domain_recovered.maximum_values()[0].is_none());
@@ -1153,7 +1153,7 @@ mod trait_conversions {
         // Verify the recovered univariate matches constant type
         // Constant values are unbounded in domain
         let sample = SVector::from([0.0]);
-        let density = (&recovered).density::<U1, U1>(&sample.as_view());
+        let density = recovered.density::<U1, U1>(&sample.as_view());
         // Constant density should return a value
         assert!(
             density.is_some() || density.is_none(),
@@ -1173,7 +1173,7 @@ mod trait_conversions {
         let recovered: crate::UnivariateDensity<f64> = multivariate.into();
 
         // Verify it's a cosine (by checking the typename would work, but we test domain)
-        let domain_recovered = (&recovered).domain();
+        let domain_recovered = recovered.domain();
         assert_abs_diff_eq!(
             domain_recovered.minimum_values()[0].unwrap(),
             0.1,
@@ -1184,5 +1184,124 @@ mod trait_conversions {
             0.2,
             epsilon = 1e-10
         );
+    }
+
+    #[test]
+    fn test_univariate_tryfrom_constant() {
+        // Test TryFrom for ConstantDensity
+        let constant = ConstantDensity::new(5.0);
+        let univariate: crate::UnivariateDensity<f64> = constant.clone().into();
+
+        // Convert back using TryFrom
+        let result: Result<ConstantDensity<f64>, _> = univariate.try_into();
+        assert!(result.is_ok(), "TryFrom should succeed for ConstantDensity");
+
+        let recovered = result.unwrap();
+        assert_abs_diff_eq!(recovered.constant(), 5.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_univariate_tryfrom_uniform() {
+        // Test TryFrom for UniformDensity
+        let uniform = UniformDensity::new(1.0, 3.0).unwrap();
+        let univariate: crate::UnivariateDensity<f64> = uniform.clone().into();
+
+        // Convert back using TryFrom
+        let result: Result<UniformDensity<f64>, _> = univariate.try_into();
+        assert!(result.is_ok(), "TryFrom should succeed for UniformDensity");
+
+        let recovered = result.unwrap();
+        assert_abs_diff_eq!(recovered.minimum(), 1.0, epsilon = 1e-10);
+        assert_abs_diff_eq!(recovered.maximum(), 3.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_univariate_tryfrom_normal() {
+        // Test TryFrom for NormalDensity
+        let normal = NormalDensity::new(2.0, 0.5, None, None).unwrap();
+        let univariate: crate::UnivariateDensity<f64> = normal.clone().into();
+
+        // Convert back using TryFrom
+        let result: Result<NormalDensity<f64>, _> = univariate.try_into();
+        assert!(result.is_ok(), "TryFrom should succeed for NormalDensity");
+
+        let recovered = result.unwrap();
+        let sample = SVector::from([2.0]);
+        let density_orig = normal.density::<U1, U1>(&sample.as_view());
+        let density_recovered = recovered.density::<U1, U1>(&sample.as_view());
+        assert_abs_diff_eq!(
+            density_orig.unwrap(),
+            density_recovered.unwrap(),
+            epsilon = 1e-10
+        );
+    }
+
+    #[test]
+    fn test_univariate_tryfrom_cosine() {
+        // Test TryFrom for CosineDensity
+        // Use a simple symmetric range that works with cosine
+        let cosine = CosineDensity::new(-1.0, 1.0).unwrap();
+        let univariate: crate::UnivariateDensity<f64> = cosine.clone().into();
+
+        // Convert back using TryFrom
+        let result: Result<CosineDensity<f64>, _> = univariate.try_into();
+        assert!(result.is_ok(), "TryFrom should succeed for CosineDensity");
+
+        let recovered = result.unwrap();
+        assert_abs_diff_eq!(recovered.minimum(), -1.0, epsilon = 1e-10);
+        assert_abs_diff_eq!(recovered.maximum(), 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_univariate_tryfrom_lognormal() {
+        // Test TryFrom for LognormalDensity
+        let lognormal = LognormalDensity::new(0.0, 1.0, 0.1, 10.0).unwrap();
+        let univariate: crate::UnivariateDensity<f64> = lognormal.clone().into();
+
+        // Convert back using TryFrom
+        let result: Result<LognormalDensity<f64>, _> = univariate.try_into();
+        assert!(
+            result.is_ok(),
+            "TryFrom should succeed for LognormalDensity"
+        );
+
+        let recovered = result.unwrap();
+        let sample = SVector::from([1.0]);
+        let density_orig = lognormal.density::<U1, U1>(&sample.as_view());
+        let density_recovered = recovered.density::<U1, U1>(&sample.as_view());
+        assert_abs_diff_eq!(
+            density_orig.unwrap(),
+            density_recovered.unwrap(),
+            epsilon = 1e-10
+        );
+    }
+
+    #[test]
+    fn test_univariate_tryfrom_loguniform() {
+        // Test TryFrom for LogUniformDensity
+        let loguniform = LogUniformDensity::new(1.0, 10.0).unwrap();
+        let univariate: crate::UnivariateDensity<f64> = loguniform.clone().into();
+
+        // Convert back using TryFrom
+        let result: Result<LogUniformDensity<f64>, _> = univariate.try_into();
+        assert!(
+            result.is_ok(),
+            "TryFrom should succeed for LogUniformDensity"
+        );
+
+        let recovered = result.unwrap();
+        assert_abs_diff_eq!(recovered.minimum(), 1.0, epsilon = 1e-10);
+        assert_abs_diff_eq!(recovered.maximum(), 10.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_univariate_tryfrom_wrong_type() {
+        // Test that TryFrom fails with wrong type
+        let uniform = UniformDensity::new(0.0, 1.0).unwrap();
+        let univariate: crate::UnivariateDensity<f64> = uniform.into();
+
+        // Try to convert to ConstantDensity (wrong type)
+        let result: Result<ConstantDensity<f64>, _> = univariate.try_into();
+        assert!(result.is_err(), "TryFrom should fail for wrong type");
     }
 }

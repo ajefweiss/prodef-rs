@@ -1,5 +1,5 @@
 use crate::{Density, RejectionSampler, SamplingMode, domain::Domain, macros::tval};
-use nalgebra::{Dim, OVector, RealField, SVector, U1, VectorView};
+use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
 use rand::RngExt;
 use rand_distr::{Distribution, StandardNormal};
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LognormalDensity<T>(T, T, Domain<T, U1>)
 where
-    T: RealField;
+    T: Scalar;
 
 impl<T> LognormalDensity<T>
 where
@@ -65,7 +65,7 @@ where
     }
 }
 
-impl<T> Density<T, U1> for &LognormalDensity<T>
+impl<T> Density<T, U1> for LognormalDensity<T>
 where
     T: RealField,
     StandardNormal: Distribution<T>,
@@ -141,5 +141,16 @@ where
         let normal = StandardNormal;
         let z = rng.sample(normal);
         SVector::from([(self.0.clone() + self.1.clone() * z).exp()])
+    }
+}
+
+impl<T: RealField> TryFrom<crate::univariate::UnivariateDensity<T>> for LognormalDensity<T> {
+    type Error = ();
+
+    fn try_from(value: crate::univariate::UnivariateDensity<T>) -> Result<Self, Self::Error> {
+        match value {
+            crate::univariate::UnivariateDensity::Lognormal(pdf) => Ok(pdf),
+            _ => Err(()),
+        }
     }
 }

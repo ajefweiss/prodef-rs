@@ -70,7 +70,7 @@ fn bench_particle_sample(c: &mut Criterion) {
             let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
             b.iter(|| {
                 (0..100)
-                    .map(|_| (&dist).sample(&mut rng, &SamplingMode::SingleAttempt))
+                    .map(|_| dist.sample(&mut rng, &SamplingMode::SingleAttempt))
                     .last()
             })
         });
@@ -105,7 +105,7 @@ fn bench_particle_sample_iter(c: &mut Criterion) {
         group.throughput(criterion::Throughput::Elements((*dim * 100) as u64));
         group.bench_function(format!("sample_iter_dim_{}", dim), |b| {
             let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-            b.iter(|| (&dist).sample_iter(&mut rng).take(100).flatten().last())
+            b.iter(|| dist.sample_iter(&mut rng).take(100).flatten().last())
         });
     }
 

@@ -1,5 +1,5 @@
 use crate::{Density, SamplingMode, domain::Domain, macros::tval};
-use nalgebra::{Dim, OVector, RealField, SVector, U1, VectorView};
+use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
 use rand::RngExt;
 use rand_distr::{Uniform, uniform::SampleUniform};
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LogUniformDensity<T>(Domain<T, U1>)
 where
-    T: RealField;
+    T: Scalar;
 
 impl<T> LogUniformDensity<T>
 where
@@ -52,7 +52,7 @@ where
     }
 }
 
-impl<T> Density<T, U1> for &LogUniformDensity<T>
+impl<T> Density<T, U1> for LogUniformDensity<T>
 where
     T: RealField + SampleUniform,
 {
@@ -111,13 +111,27 @@ where
         let b = self.maximum();
         let ln_ratio = b.clone().ln() - a.clone().ln();
 
-        let a_sq = a.clone() * a.clone();
-        let b_sq = b.clone() * b.clone();
-        let e_x_sq = (b_sq - a_sq) / (tval!(2.0, f64) * ln_ratio.clone());
+        let a_sq = a.clone() * a;
+        let b_sq = b.clone() * b;
+        let e_x_sq = (b_sq - a_sq) / (tval!(2.0, f64) * ln_ratio);
 
         let mean = self.mean()[0].clone();
         let mean_sq = mean.clone() * mean;
 
         SVector::from([e_x_sq - mean_sq])
+    }
+}
+
+impl<T> TryFrom<crate::univariate::UnivariateDensity<T>> for LogUniformDensity<T>
+where
+    T: RealField,
+{
+    type Error = ();
+
+    fn try_from(value: crate::univariate::UnivariateDensity<T>) -> Result<Self, Self::Error> {
+        match value {
+            crate::univariate::UnivariateDensity::Loguniform(pdf) => Ok(pdf),
+            _ => Err(()),
+        }
     }
 }

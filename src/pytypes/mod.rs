@@ -4,11 +4,13 @@
 
 mod multinormal;
 mod multivariate;
+mod particle;
 mod sampling;
 mod univariate;
 
 pub use multinormal::*;
 pub use multivariate::*;
+pub use particle::*;
 pub use sampling::*;
 pub use univariate::*;
 

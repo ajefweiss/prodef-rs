@@ -2,7 +2,7 @@ use crate::{
     multivariate::MultivariateDensity,
     pytypes::{Float, PyUnivariate},
 };
-use nalgebra::{DefaultAllocator, Dim, Dyn, OVector, U1, allocator::Allocator};
+use nalgebra::Dyn;
 use pyo3::{Bound, PyResult, exceptions::PyTypeError, prelude::*, types::PyList};
 
 /// A multivariate density for use in Python.
@@ -26,11 +26,7 @@ impl From<MultivariateDensity<Float, Dyn>> for PyMultivariate {
         let uvpdfs = dist
             .marginals()
             .iter()
-            .enumerate()
-            .map(|(i, uv)| {
-                let name = format!("marginal_{}", i);
-                PyUnivariate::new(name, uv.clone())
-            })
+            .map(|uv| PyUnivariate::from(uv.clone()))
             .collect();
         Self { uvpdfs }
     }

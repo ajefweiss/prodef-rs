@@ -1,5 +1,5 @@
 use crate::{Density, RejectionSampler, SamplingMode, domain::Domain, macros::tval};
-use nalgebra::{Dim, OVector, RealField, SVector, U1, VectorView};
+use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
 use rand::RngExt;
 use rand_distr::{Distribution, StandardNormal};
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct NormalDensity<T>(T, T, Domain<T, U1>)
 where
-    T: RealField;
+    T: Scalar;
 
 impl<T> NormalDensity<T>
 where
@@ -25,10 +25,10 @@ where
     pub fn erf(z: T) -> T {
         tval!(2, usize) / T::pi().sqrt()
             * (z.clone() - z.clone().powi(3) / tval!(3, usize)
-                + z.clone().clone().powi(5) / tval!(10, usize)
+                + z.clone().powi(5) / tval!(10, usize)
                 - z.clone().powi(7) / tval!(42, usize)
                 + z.clone().powi(9) / tval!(216, usize)
-                - z.clone().powi(11) / tval!(1320, usize))
+                - z.powi(11) / tval!(1320, usize))
     }
 
     /// Create a new [`NormalDensity`].
@@ -37,13 +37,11 @@ where
             return None;
         }
 
-        let sdom = (opt_a.clone(), opt_b.clone());
-
-        if opt_a.unwrap_or(T::neg(T::one())) >= opt_b.unwrap_or(T::one()) {
+        if opt_a.as_ref().unwrap_or(&T::neg(T::one())) >= opt_b.as_ref().unwrap_or(&T::one()) {
             return None;
         }
 
-        let domain = Domain::new_mdomain(OVector::from_element_generic(U1, U1, sdom));
+        let domain = Domain::new_mdomain(OVector::from_element_generic(U1, U1, (opt_a, opt_b)));
 
         Some(Self(mean, std_dev, domain))
     }
@@ -65,7 +63,7 @@ where
     }
 }
 
-impl<T> Density<T, U1> for &NormalDensity<T>
+impl<T> Density<T, U1> for NormalDensity<T>
 where
     T: RealField,
     StandardNormal: Distribution<T>,
@@ -99,28 +97,28 @@ where
         let b = self.maximum();
 
         // If domain is unbounded or μ is within bounds, return μ
-        if let (Some(min), Some(max)) = (a.clone(), b.clone()) {
-            if min <= mu.clone() && mu.clone() <= max {
+        if let (Some(min), Some(max)) = (&a, &b) {
+            if min <= &mu && &mu <= max {
                 return SVector::from([mu]);
             }
             // Both bounds exist, mean is outside. Return closer boundary.
-            if mu.clone() < min {
-                return SVector::from([min]);
+            if &mu < min {
+                return SVector::from([min.clone()]);
             } else {
-                return SVector::from([max]);
+                return SVector::from([max.clone()]);
             }
         }
 
         // Only one bound exists
-        if let Some(min) = a.clone()
-            && mu.clone() < min
+        if let Some(min) = &a
+            && &mu < min
         {
-            return SVector::from([min]);
+            return SVector::from([min.clone()]);
         }
-        if let Some(max) = b.clone()
-            && mu.clone() > max
+        if let Some(max) = &b
+            && mu > *max
         {
-            return SVector::from([max]);
+            return SVector::from([max.clone()]);
         }
 
         SVector::from([mu])
@@ -161,5 +159,16 @@ where
         let z = rng.sample(StandardNormal);
 
         OVector::from([self.1.clone() * z + self.0.clone()])
+    }
+}
+
+impl<T: RealField> TryFrom<crate::univariate::UnivariateDensity<T>> for NormalDensity<T> {
+    type Error = ();
+
+    fn try_from(value: crate::univariate::UnivariateDensity<T>) -> Result<Self, Self::Error> {
+        match value {
+            crate::univariate::UnivariateDensity::Normal(pdf) => Ok(pdf),
+            _ => Err(()),
+        }
     }
 }

@@ -1,5 +1,5 @@
 use crate::{Density, SamplingMode, domain::Domain, macros::tval};
-use nalgebra::{Dim, OVector, RealField, SVector, U1, VectorView};
+use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
 use rand::RngExt;
 use rand_distr::{Uniform, uniform::SampleUniform};
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CosineDensity<T>(Domain<T, U1>)
 where
-    T: RealField;
+    T: Scalar;
 
 impl<T> CosineDensity<T>
 where
@@ -54,7 +54,7 @@ where
     }
 }
 
-impl<T> Density<T, U1> for &CosineDensity<T>
+impl<T> Density<T, U1> for CosineDensity<T>
 where
     T: RealField + SampleUniform,
 {
@@ -86,7 +86,7 @@ where
 
         // Check if domain is symmetric around 0
         let zero = T::zero();
-        if a.clone() == -b.clone() {
+        if a == -b.clone() {
             return SVector::from([zero]);
         }
 
@@ -150,7 +150,7 @@ where
         let b = self.maximum();
 
         // Check if domain is symmetric around 0
-        if a.clone() == -b.clone() {
+        if a == -b.clone() {
             // For symmetric domain [-x, x], variance simplifies
             // For the cosine distribution on [-π/2, π/2], variance ≈ (π²/4 - 2)
             // For general [-x, x], compute it
@@ -176,12 +176,21 @@ where
         // ∫_a^b x²*cos(x) dx = [x²*sin(x) + 2x*cos(x) - 2*sin(x)]_a^b
         let b_sq = b.clone() * b.clone();
         let a_sq = a.clone() * a.clone();
-        let upper = b_sq.clone() * sin_b.clone() + b.clone() * cos_b.clone() * tval!(2.0, f64)
-            - sin_b.clone() * tval!(2.0, f64);
-        let lower = a_sq.clone() * sin_a.clone() + a.clone() * cos_a.clone() * tval!(2.0, f64)
-            - sin_a.clone() * tval!(2.0, f64);
+        let upper = b_sq * sin_b.clone() + b * cos_b * tval!(2.0, f64) - sin_b * tval!(2.0, f64);
+        let lower = a_sq * sin_a.clone() + a * cos_a * tval!(2.0, f64) - sin_a * tval!(2.0, f64);
         let e_x_squared = (upper - lower) / norm;
 
         SVector::from([e_x_squared - mean.clone() * mean])
+    }
+}
+
+impl<T: RealField> TryFrom<crate::univariate::UnivariateDensity<T>> for CosineDensity<T> {
+    type Error = ();
+
+    fn try_from(value: crate::univariate::UnivariateDensity<T>) -> Result<Self, Self::Error> {
+        match value {
+            crate::univariate::UnivariateDensity::Cosine(pdf) => Ok(pdf),
+            _ => Err(()),
+        }
     }
 }

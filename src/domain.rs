@@ -1,6 +1,8 @@
 //! Types and traits for representing function domains.
 
-use nalgebra::{DefaultAllocator, Dim, OVector, RealField, U1, VectorView, allocator::Allocator};
+use nalgebra::{
+    DefaultAllocator, Dim, OVector, RealField, Scalar, U1, VectorView, allocator::Allocator,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
@@ -67,7 +69,7 @@ use std::fmt::Debug;
 ))]
 pub enum Domain<T, D>
 where
-    T: RealField,
+    T: Scalar,
     D: Dim,
     DefaultAllocator: Allocator<D>,
 {
@@ -199,7 +201,7 @@ where
             Domain::MDomain(sdoms) => OVector::from_iterator_generic(
                 sdoms.shape_generic().0,
                 U1,
-                sdoms.iter().map(|sdom| sdom.clone().1),
+                sdoms.iter().map(|sdom| sdom.1.clone()),
             ),
         }
     }
@@ -211,7 +213,7 @@ where
             Domain::MDomain(sdoms) => OVector::from_iterator_generic(
                 sdoms.shape_generic().0,
                 U1,
-                sdoms.iter().map(|sdom| sdom.clone().0),
+                sdoms.iter().map(|sdom| sdom.0.clone()),
             ),
         }
     }

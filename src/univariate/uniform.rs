@@ -1,5 +1,5 @@
 use crate::{Density, SamplingMode, domain::Domain, macros::tval};
-use nalgebra::{Dim, OVector, RealField, SVector, U1, VectorView};
+use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
 use rand::RngExt;
 use rand_distr::{Uniform, uniform::SampleUniform};
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct UniformDensity<T>(Domain<T, U1>)
 where
-    T: RealField;
+    T: Scalar;
 
 impl<T> UniformDensity<T>
 where
@@ -48,7 +48,7 @@ where
     }
 }
 
-impl<T> Density<T, U1> for &UniformDensity<T>
+impl<T> Density<T, U1> for UniformDensity<T>
 where
     T: RealField + SampleUniform,
 {
@@ -100,5 +100,16 @@ where
         let range = self.maximum() - self.minimum();
 
         SVector::from([range.powi(2) / tval!(12, usize)])
+    }
+}
+
+impl<T: RealField> TryFrom<crate::univariate::UnivariateDensity<T>> for UniformDensity<T> {
+    type Error = ();
+
+    fn try_from(value: crate::univariate::UnivariateDensity<T>) -> Result<Self, Self::Error> {
+        match value {
+            crate::univariate::UnivariateDensity::Uniform(pdf) => Ok(pdf),
+            _ => Err(()),
+        }
     }
 }

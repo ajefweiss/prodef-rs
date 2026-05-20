@@ -1,6 +1,6 @@
 [package]
 name = "prodef"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 
 authors = ["Andreas J. Weiss <ajefweiss@gmail.com>"]
@@ -19,7 +19,7 @@ itertools = "0.14.0"
 nalgebra = { version ="0.34.2", features = ["rayon", "serde-serialize"] }
 num-traits = "0.2.19"
 numpy = { version = "0.28.0", features = ["nalgebra"], optional = true }
-pyo3 = { version = "0.28.3", features = ["multiple-pymethods"], optional = true }
+pyo3 = { version = "0.28.3", features = ["multiple-pymethods", "extension-module"], optional = true }
 rand = "0.10.1"
 rand_distr = "0.6.0"
 rand_xoshiro = { version = "0.8.0", optional = true}

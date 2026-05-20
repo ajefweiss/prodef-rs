@@ -110,7 +110,7 @@ use serde::{Deserialize, Serialize};
 ///     uniform_y.into(),
 /// ]));
 /// ```
-pub trait Density<T, D>
+pub trait Density<T, D>: Clone
 where
     T: RealField,
     D: Dim,
@@ -134,6 +134,11 @@ where
     where
         DefaultAllocator: Allocator<D>;
 
+    /// Returns the number of dimensions of the distribution.
+    fn ndims(&self) -> usize where DefaultAllocator: Allocator<D> {
+        self.domain().shape_generic().value()
+    }
+
     /// Draw a random sample from the probability density distribution using the provided random number generator and sampling mode.
     ///
     /// Returns [`None`] if the sampling procedure fails (too many attempted draws).
@@ -149,10 +154,61 @@ where
     where
         DefaultAllocator: Allocator<D>;
 
+        
     /// Returns the variance of the distribution.
     fn variance(&self) -> OVector<T, D>
     where
         DefaultAllocator: Allocator<D>;
+}
+
+// Blanket impl for all references.
+impl<T, D, G> Density<T, D> for &G
+where
+    T: RealField,
+    D: Dim,
+    G: Density<T, D>,
+{
+    fn density<RStride: Dim, CStride: Dim>(
+        &self,
+        sample: &VectorView<T, D, RStride, CStride>,
+    ) -> Option<T> {
+        (**self).density(sample)
+    }
+
+    fn domain(&self) -> Domain<T, D>
+    where
+        DefaultAllocator: Allocator<D>,
+    {
+        (**self).domain()
+    }
+
+    fn mean(&self) -> OVector<T, D>
+    where
+        DefaultAllocator: Allocator<D>,
+    {
+        (**self).mean()
+    }
+
+    fn sample(&self, rng: &mut impl RngExt, mode: &SamplingMode) -> Option<OVector<T, D>>
+    where
+        DefaultAllocator: Allocator<D>,
+    {
+        (**self).sample(rng, mode)
+    }
+
+    fn sample_iter(&self, rng: &mut impl RngExt) -> impl Iterator<Item = Option<OVector<T, D>>>
+    where
+        DefaultAllocator: Allocator<D>,
+    {
+        (**self).sample_iter(rng)
+    }
+
+    fn variance(&self) -> OVector<T, D>
+    where
+        DefaultAllocator: Allocator<D>,
+    {
+        (**self).variance()
+    }
 }
 
 /// Helper for implementing acceptance-rejection sampling with configurable modes.
