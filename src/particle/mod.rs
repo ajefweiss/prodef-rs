@@ -2,7 +2,7 @@ mod normal;
 
 use crate::Domain;
 use nalgebra::{DefaultAllocator, Dim, Dyn, OMatrix, OVector, RealField, allocator::Allocator};
-use rand::RngExt;
+use rand::{RngExt, SeedableRng};
 use rand_distr::{Uniform, uniform::SampleUniform};
 use serde::{Deserialize, Serialize};
 
@@ -101,15 +101,18 @@ where
     }
 
     /// Draw a random sample particle.
-    pub fn sample_particle(&self, rng: &mut impl RngExt) -> OVector<T, D> {
+    pub fn sample_particle<R>(&self, rng: &mut R) -> OVector<T, D>
+    where
+        R: RngExt + SeedableRng,
+    {
         let pdx = {
             match &self.opt_weights {
-                Some(weights) =>
-                // Here we abuse try_fold to return particle index early wrapped within Err().
-                {
+                Some(weights) => {
+                    // Weighted resampling by cumulative probability. `wdx` is drawn from
+                    // [0, 1) and the first particle whose cumulative weight exceeds this
+                    // threshold is selected.
                     let uniform = Uniform::new(T::zero(), T::one()).unwrap();
 
-                    // Select particle index by weight.
                     let wdx = rng.sample(uniform);
 
                     match weights
@@ -130,7 +133,7 @@ where
                 None => {
                     let uniform = Uniform::new(0, self.particles.ncols()).unwrap();
 
-                    // Select particle index by weight.
+                    // Uniformly select a particle index when no weights are provided.
                     rng.sample(uniform)
                 }
             }

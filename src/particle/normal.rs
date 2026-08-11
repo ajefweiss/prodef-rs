@@ -1,13 +1,13 @@
 use crate::{
-    Density, Domain, RejectionSampler, SamplingMode, macros::tval,
-    multinormal::MultivariateNormalDensity, particle::ParticleDensity,
+    Density, Domain, multinormal::MultivariateNormalDensity, particle::ParticleDensity, tval,
 };
+use log::warn;
 use nalgebra::{
     DVector, DefaultAllocator, Dim, Dyn, MatrixView, OMatrix, OVector, RealField, U1, VectorView,
     allocator::Allocator,
 };
-use rand::RngExt;
-use rand_distr::{Distribution, StandardNormal, uniform::SampleUniform};
+use rand::{RngExt, SeedableRng};
+use rand_distr::{Distribution, StandardNormal, StandardUniform, uniform::SampleUniform};
 use rayon::prelude::*;
 use std::iter::{Sum, repeat_with};
 
@@ -15,8 +15,9 @@ impl<T, D> ParticleDensity<T, D, MultivariateNormalDensity<T, D>>
 where
     T: RealField + Sum,
     D: Dim,
-    StandardNormal: Distribution<T>,
     DefaultAllocator: Allocator<D> + Allocator<U1, D> + Allocator<D, D> + Allocator<D, Dyn>,
+    StandardNormal: Distribution<T>,
+    StandardUniform: Distribution<T>,
 {
     /// Create a [`ParticleDensity`] from a view of vectors, with optional weights and kernel.
     ///
@@ -110,7 +111,9 @@ where
                                 if delta.norm() == T::zero() {
                                     T::zero()
                                 } else {
-                                    ((weight_old.clone()).ln() - self.kernel.mahalanobis_distance_sq(&delta.as_view())).exp()
+                                    ((weight_old.clone()).ln()
+                                        - self.kernel.mahalanobis_distance_sq(&delta.as_view()))
+                                    .exp()
                                 }
                             })
                             .sum::<T>()
@@ -141,6 +144,7 @@ where
     D: Dim,
     DefaultAllocator: Allocator<D> + Allocator<U1, D> + Allocator<D, D> + Allocator<D, Dyn>,
     StandardNormal: Distribution<T>,
+    StandardUniform: Distribution<T>,
 {
     fn density<RStride: Dim, CStride: Dim>(
         &self,
@@ -222,18 +226,43 @@ where
         }
     }
 
-    fn sample(&self, rng: &mut impl RngExt, mode: &SamplingMode) -> Option<OVector<T, D>> {
-        self.rejection_sample(rng, mode)
+    fn sample<R>(&self, rng: &mut R) -> Option<OVector<T, D>>
+    where
+        R: RngExt + SeedableRng,
+    {
+        let mut attempts = 0;
+
+        loop {
+            let candidate = self.sample_particle(rng)
+                + self
+                    .kernel
+                    .sample(rng)
+                    .expect("particle kernel should use an unbounded domain")
+                - &self.kernel.mean;
+
+            if self.domain().contains(&candidate.as_view()) {
+                return Some(candidate);
+            }
+
+            attempts += 1;
+
+            if attempts == 1000 * self.ndim().pow(2) {
+                warn!("rejection sampling exceeded {} attempts", attempts)
+            }
+        }
     }
 
-    fn sample_iter(&self, rng: &mut impl RngExt) -> impl Iterator<Item = Option<OVector<T, D>>> {
+    fn sample_iter<R>(&self, rng: &mut R) -> impl Iterator<Item = Option<OVector<T, D>>>
+    where
+        R: RngExt + SeedableRng,
+    {
         let particle = self.sample_particle(rng);
 
         repeat_with(move || {
             let candidate = &particle
                 + self
                     .kernel
-                    .sample(rng, &SamplingMode::SingleAttempt)
+                    .sample(rng)
                     .expect("particle kernel should use an unbounded domain")
                 - &self.kernel.mean;
 
@@ -285,24 +314,5 @@ where
                 )
             }
         }
-    }
-}
-
-impl<T, D> RejectionSampler<T, D> for &ParticleDensity<T, D, MultivariateNormalDensity<T, D>>
-where
-    T: RealField + SampleUniform + Sum,
-    D: Dim,
-    DefaultAllocator: Allocator<D> + Allocator<U1, D> + Allocator<D, D> + Allocator<D, Dyn>,
-    StandardNormal: Distribution<T>,
-{
-    fn generate_candidate(&self, rng: &mut impl RngExt) -> OVector<T, D> {
-        let particle = self.sample_particle(rng);
-
-        &particle
-            + self
-                .kernel
-                .sample(rng, &SamplingMode::UntilValidNoLimit)
-                .expect("particle kernel should use an unbounded domain")
-            - &self.kernel.mean
     }
 }

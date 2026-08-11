@@ -1,7 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use nalgebra::{DMatrix, DVector, Dyn};
-use prodef::{Density, Domain, SamplingMode};
-use prodef::{MultivariateNormalDensity, ParticleDensity};
+use prodef::{Density, Domain, MultivariateNormalDensity, ParticleDensity};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::{hint::black_box, time::Duration};
@@ -67,11 +66,9 @@ fn bench_particle_sample(c: &mut Criterion) {
 
         group.throughput(criterion::Throughput::Elements((*dim * 100) as u64));
         group.bench_function(format!("sample_dim_{}", dim), |b| {
-            let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
             b.iter(|| {
-                (0..100)
-                    .map(|_| dist.sample(&mut rng, &SamplingMode::SingleAttempt))
-                    .last()
+                let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
+                (0..100).map(|_| dist.sample(&mut rng)).last()
             })
         });
     }
@@ -104,8 +101,10 @@ fn bench_particle_sample_iter(c: &mut Criterion) {
 
         group.throughput(criterion::Throughput::Elements((*dim * 100) as u64));
         group.bench_function(format!("sample_iter_dim_{}", dim), |b| {
-            let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-            b.iter(|| dist.sample_iter(&mut rng).take(100).flatten().last())
+            b.iter(|| {
+                let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
+                dist.sample_iter(&mut rng).take(100).flatten().last()
+            })
         });
     }
 

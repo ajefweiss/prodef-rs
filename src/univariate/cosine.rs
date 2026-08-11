@@ -1,6 +1,7 @@
-use crate::{Density, SamplingMode, domain::Domain, macros::tval};
+use crate::{Density, domain::Domain, tval};
+use approx::ulps_eq;
 use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
-use rand::RngExt;
+use rand::{RngExt, SeedableRng};
 use rand_distr::{Uniform, uniform::SampleUniform};
 use serde::{Deserialize, Serialize};
 
@@ -97,7 +98,7 @@ where
 
         // If norm is approximately zero, the distribution is degenerate
         let norm_abs = norm.clone().abs();
-        if norm_abs < tval!(1e-15, f64) {
+        if ulps_eq!(norm_abs, T::zero()) {
             return SVector::from([T::zero()]);
         }
 
@@ -111,7 +112,11 @@ where
         SVector::from([numerator / norm])
     }
 
-    fn sample(&self, rng: &mut impl RngExt, _mode: &SamplingMode) -> Option<SVector<T, 1>> {
+    fn sample<R>(&self, rng: &mut R) -> Option<SVector<T, 1>>
+    where
+        R: RngExt + SeedableRng,
+        nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
+    {
         // The range is limited to the interval [-π/2, π/2].
         // This invariant is guaranteed by the constructor.
         match &self.0.inner().unwrap() {
@@ -125,7 +130,11 @@ where
         }
     }
 
-    fn sample_iter(&self, rng: &mut impl RngExt) -> impl Iterator<Item = Option<SVector<T, 1>>> {
+    fn sample_iter<R>(&self, rng: &mut R) -> impl Iterator<Item = Option<SVector<T, 1>>>
+    where
+        R: RngExt + SeedableRng,
+        nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
+    {
         // The range is limited to the interval [-π/2, π/2].
         // This invariant is guaranteed by the constructor.
         match &self.0.inner().unwrap() {
@@ -165,7 +174,7 @@ where
 
         // If norm is approximately zero, the distribution is degenerate
         let norm_abs = norm.clone().abs();
-        if norm_abs < tval!(1e-15, f64) {
+        if ulps_eq!(norm_abs, T::zero()) {
             return SVector::from([T::zero()]);
         }
 

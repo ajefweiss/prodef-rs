@@ -1,8 +1,8 @@
 use std::iter::repeat;
 
-use crate::{Density, SamplingMode, domain::Domain};
+use crate::{Density, domain::Domain};
 use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
-use rand::RngExt;
+use rand::{RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 /// A constant (point mass) PDF.
@@ -58,7 +58,11 @@ where
         SVector::from([self.constant()])
     }
 
-    fn sample(&self, _rng: &mut impl RngExt, _mode: &SamplingMode) -> Option<SVector<T, 1>> {
+    fn sample<R>(&self, _rng: &mut R) -> Option<SVector<T, 1>>
+    where
+        R: RngExt + SeedableRng,
+        nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
+    {
         match &self.0.inner().unwrap() {
             (Some(constant), Some(_)) => Some(SVector::from([constant.clone()])),
             // Safe by construction
@@ -66,7 +70,11 @@ where
         }
     }
 
-    fn sample_iter(&self, _rng: &mut impl RngExt) -> impl Iterator<Item = Option<SVector<T, 1>>> {
+    fn sample_iter<R>(&self, _rng: &mut R) -> impl Iterator<Item = Option<SVector<T, 1>>>
+    where
+        R: RngExt + SeedableRng,
+        nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
+    {
         match &self.0.inner().unwrap() {
             (Some(constant), Some(_)) => repeat(Some(OVector::from([constant.clone()]))),
             // Safe by construction

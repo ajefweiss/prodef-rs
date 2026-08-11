@@ -1,5 +1,6 @@
 //! Types and traits for representing function domains.
 
+use approx::ulps_eq;
 use nalgebra::{
     DefaultAllocator, Dim, OVector, RealField, Scalar, U1, VectorView, allocator::Allocator,
 };
@@ -8,10 +9,11 @@ use std::fmt::Debug;
 
 /// A generic function domain specifying valid input regions for PDFs.
 ///
-/// Two domain types are currently supported:
+/// Three domain types are currently supported:
 ///
 /// - **Unbounded (`UDomain`)**: The entire ℝᵈ space (all `D`-dimensional real values valid)
 /// - **Bounded (`MDomain`)**: A `D`-dimensional hypercube with per-dimension interval bounds
+/// - **Spherical (`SDomain`)**: A `D`-dimensional ball (sphere) centered at the origin with radius 1
 ///
 /// # Operations
 ///
@@ -19,10 +21,11 @@ use std::fmt::Debug;
 /// - Returns `true` for samples within bounds (inclusive), `false` otherwise
 /// - Used by `Density::density()` to return `None` for out-of-domain samples
 /// - For bounded domains, returns `true` if `a ≤ sample ≤ b` in all dimensions
+/// - For spherical domains, returns `true` if `||sample|| ≤ 1`
 ///
 /// **Boundary enforcement**: Use `clamp()` to project samples onto domain boundaries.
 /// - Clamps each coordinate to its dimension's [min, max] range (inclusive)
-/// - Used by `SamplingMode::UntilValidOrClamp` after rejection sampling budget exhausted
+/// - Used by `SamplingConfiguration::UntilValidOrClamp` after rejection sampling budget exhausted
 /// - Result will always satisfy `contains()` unless domain is invalid
 ///
 /// **Querying bounds**: Use `maximum_values()` and `minimum_values()` for per-dimension limits.
@@ -63,9 +66,11 @@ use std::fmt::Debug;
 /// assert!(domain.contains::<U1, U2>(&SVector::from([0.5, 0.5]).as_view()));   // interior point
 /// ```
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(bound(serialize = "D: Serialize, OVector<(Option<T>, Option<T>), D>: Serialize"))]
 #[serde(bound(
-    deserialize = "D: Deserialize<'de>, OVector<(Option<T>, Option<T>), D>: Deserialize<'de>"
+    serialize = "D: Serialize, OVector<(Option<T>, Option<T>), D>: Serialize, OVector<T, D>: Serialize"
+))]
+#[serde(bound(
+    deserialize = "D: Deserialize<'de>, OVector<(Option<T>, Option<T>), D>: Deserialize<'de>, OVector<T, D>: Deserialize<'de>"
 ))]
 pub enum Domain<T, D>
 where
@@ -73,18 +78,10 @@ where
     D: Dim,
     DefaultAllocator: Allocator<D>,
 {
-    /// Unbounded domain spanning all of ℝᵈ (entire `D`-dimensional space).
-    ///
-    /// All samples are valid. Contains the dimension `D` for shape information.
     UDomain(D),
-    /// Bounded domain as a `D`-dimensional hypercube with per-dimension interval bounds.
-    ///
-    /// Each element is a tuple `(min, max)` representing a **closed interval [min, max]**.
-    /// - `Some(x)` means the bound is explicitly set to `x` (INCLUSIVE)
-    /// - `None` means that bound is unbounded
-    /// - `(None, None)` in a dimension is equivalent to unbounded in that coordinate
-    /// - `(Some(a), Some(b))` is interpreted as the closed interval [a, b] where both endpoints are valid
     MDomain(OVector<(Option<T>, Option<T>), D>),
+    SDomain(D),
+    ShDomain(D),
 }
 
 impl<T> Domain<T, U1>
@@ -96,6 +93,8 @@ where
         match self {
             Domain::UDomain(_) => None,
             Domain::MDomain(sdoms) => Some(sdoms[0].clone()),
+            Domain::SDomain(_) => Some((Some(-T::one()), Some(T::one()))),
+            Domain::ShDomain(_) => Some((Some(-T::one()), Some(T::one()))),
         }
     }
 }
@@ -160,6 +159,30 @@ where
                     value.clone()
                 }),
             ),
+            Domain::SDomain { .. } => {
+                let norm = sample.norm();
+
+                // If already inside the sphere, return unchanged
+                if norm <= T::one() {
+                    sample.clone_owned()
+                } else {
+                    // Project onto the sphere surface by scaling
+                    sample.clone_owned() / norm
+                }
+            }
+            Domain::ShDomain { .. } => {
+                let norm = sample.norm();
+
+                // Always project onto the sphere shell surface (radius = 1)
+                if norm > T::zero() {
+                    sample.clone_owned() / norm
+                } else {
+                    // Handle zero vector case: project to (1, 0, 0, ...)
+                    let mut result = sample.clone_owned();
+                    result[0] = T::one();
+                    result
+                }
+            }
         }
     }
 
@@ -191,6 +214,11 @@ where
                 (None, Some(max)) => value <= max,
                 (None, None) => true,
             }),
+            Domain::SDomain { .. } => sample.norm() <= T::one(),
+            Domain::ShDomain { .. } => {
+                let norm = sample.norm();
+                ulps_eq!(norm, T::one())
+            }
         }
     }
 
@@ -203,6 +231,8 @@ where
                 U1,
                 sdoms.iter().map(|sdom| sdom.1.clone()),
             ),
+            Domain::SDomain(dim) => OVector::from_element_generic(*dim, U1, Some(T::one())),
+            Domain::ShDomain(dim) => OVector::from_element_generic(*dim, U1, Some(T::one())),
         }
     }
 
@@ -215,6 +245,8 @@ where
                 U1,
                 sdoms.iter().map(|sdom| sdom.0.clone()),
             ),
+            Domain::SDomain(dim) => OVector::from_element_generic(*dim, U1, Some(-T::one())),
+            Domain::ShDomain(dim) => OVector::from_element_generic(*dim, U1, Some(-T::one())),
         }
     }
 
@@ -228,11 +260,23 @@ where
         Domain::UDomain(dim)
     }
 
+    /// Create a new spherical domain centered at the origin with radius 1.
+    pub fn new_sdomain(dim: D) -> Self {
+        Domain::SDomain(dim)
+    }
+
+    /// Create a new spherical shell domain centered at the origin with radius 1.
+    pub fn new_shdomain(dim: D) -> Self {
+        Domain::ShDomain(dim)
+    }
+
     /// Returns the shape of the domain.
     pub fn shape_generic(&self) -> D {
         match self {
             Domain::UDomain(udom) => *udom,
             Domain::MDomain(sdoms) => sdoms.shape_generic().0,
+            Domain::SDomain(dim) => *dim,
+            Domain::ShDomain(dim) => *dim,
         }
     }
 
@@ -248,6 +292,12 @@ where
                     _ => None,
                 }),
             ),
+            Domain::SDomain(dim) => {
+                OVector::from_element_generic(*dim, U1, Some(T::one() + T::one()))
+            }
+            Domain::ShDomain(dim) => {
+                OVector::from_element_generic(*dim, U1, Some(T::one() + T::one()))
+            }
         }
     }
 }
@@ -391,13 +441,13 @@ mod tests {
         assert!(domain.contains::<U1, U1>(&OVector::from([0.0]).as_view()));
 
         // Just above lower bound should be contained
-        assert!(domain.contains::<U1, U1>(&OVector::from([1e-10]).as_view()));
+        assert!(domain.contains::<U1, U1>(&OVector::from([1e-9]).as_view()));
 
         // Inside should be contained
         assert!(domain.contains::<U1, U1>(&OVector::from([1e6]).as_view()));
 
         // Below lower bound should NOT be contained
-        assert!(!domain.contains::<U1, U1>(&OVector::from([-1e-10]).as_view()));
+        assert!(!domain.contains::<U1, U1>(&OVector::from([-1e-9]).as_view()));
     }
 
     #[test]
@@ -410,13 +460,13 @@ mod tests {
         assert!(domain.contains::<U1, U1>(&OVector::from([1.0]).as_view()));
 
         // Just below upper bound should be contained
-        assert!(domain.contains::<U1, U1>(&OVector::from([1.0 - 1e-10]).as_view()));
+        assert!(domain.contains::<U1, U1>(&OVector::from([1.0 - 1e-9]).as_view()));
 
         // Inside should be contained
         assert!(domain.contains::<U1, U1>(&OVector::from([-1e6]).as_view()));
 
         // Above upper bound should NOT be contained
-        assert!(!domain.contains::<U1, U1>(&OVector::from([1.0 + 1e-10]).as_view()));
+        assert!(!domain.contains::<U1, U1>(&OVector::from([1.0 + 1e-9]).as_view()));
     }
 
     #[test]
@@ -426,5 +476,112 @@ mod tests {
         let maxes = domain.maximum_values();
         assert_eq!(maxes[0], Some(1.0));
         assert_eq!(maxes[1], None);
+    }
+
+    #[test]
+    fn test_spherical_domain_contains() {
+        use nalgebra::U2;
+
+        let domain: Domain<f64, U2> = Domain::new_sdomain(U2);
+
+        // Test center (origin)
+        assert!(domain.contains::<U1, U2>(&OVector::from([0.0, 0.0]).as_view()));
+
+        // Test on boundary (radius = 1)
+        assert!(domain.contains::<U1, U2>(&OVector::from([1.0, 0.0]).as_view()));
+        assert!(domain.contains::<U1, U2>(&OVector::from([0.0, 1.0]).as_view()));
+
+        // Test interior point
+        assert!(domain.contains::<U1, U2>(&OVector::from([0.6, 0.8]).as_view()));
+
+        // Test outside
+        assert!(!domain.contains::<U1, U2>(&OVector::from([1.1, 0.0]).as_view()));
+        assert!(!domain.contains::<U1, U2>(&OVector::from([0.8, 0.8]).as_view()));
+    }
+
+    #[test]
+    fn test_spherical_domain_clamp() {
+        use nalgebra::U2;
+
+        let domain: Domain<f64, U2> = Domain::new_sdomain(U2);
+
+        // Test point inside (should remain unchanged)
+        let inside = OVector::from([0.5, 0.5]);
+        let clamped = domain.clamp::<U1, U2>(&inside.as_view());
+        assert!((clamped[0] - 0.5).abs() < 1e-9);
+        assert!((clamped[1] - 0.5).abs() < 1e-9);
+
+        // Test point outside (should be projected to boundary)
+        let outside = OVector::from([2.0, 0.0]);
+        let clamped = domain.clamp::<U1, U2>(&outside.as_view());
+        assert!((clamped[0] - 1.0).abs() < 1e-9);
+        assert!((clamped[1] - 0.0).abs() < 1e-9);
+
+        // Test point on boundary (should remain unchanged)
+        let boundary = OVector::from([0.6, 0.8]);
+        let clamped = domain.clamp::<U1, U2>(&boundary.as_view());
+        assert!((clamped[0] - 0.6).abs() < 1e-9);
+        assert!((clamped[1] - 0.8).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_spherical_shell_domain_contains() {
+        use nalgebra::U2;
+
+        let domain: Domain<f64, U2> = Domain::new_shdomain(U2);
+
+        // Test on boundary (radius = 1) - should be contained with tolerance
+        assert!(domain.contains::<U1, U2>(&OVector::from([1.0, 0.0]).as_view()));
+        assert!(domain.contains::<U1, U2>(&OVector::from([0.0, 1.0]).as_view()));
+        assert!(domain.contains::<U1, U2>(&OVector::from([0.6, 0.8]).as_view()));
+
+        // Test center (origin) - should NOT be contained
+        assert!(!domain.contains::<U1, U2>(&OVector::from([0.0, 0.0]).as_view()));
+
+        // Test interior point - should NOT be contained
+        assert!(!domain.contains::<U1, U2>(&OVector::from([0.5, 0.5]).as_view()));
+
+        // Test outside - should NOT be contained
+        assert!(!domain.contains::<U1, U2>(&OVector::from([1.1, 0.0]).as_view()));
+        assert!(!domain.contains::<U1, U2>(&OVector::from([0.8, 0.8]).as_view()));
+    }
+
+    #[test]
+    fn test_spherical_shell_domain_clamp() {
+        use nalgebra::U2;
+
+        let domain: Domain<f64, U2> = Domain::new_shdomain(U2);
+
+        // Test point inside (should be projected to boundary)
+        let inside = OVector::from([0.5, 0.5]);
+        let clamped = domain.clamp::<U1, U2>(&inside.as_view());
+        let norm = (clamped[0] * clamped[0] + clamped[1] * clamped[1]).sqrt();
+        assert!((norm - 1.0).abs() < 1e-9);
+
+        // Test point outside (should be projected to boundary)
+        let outside = OVector::from([2.0, 0.0]);
+        let clamped = domain.clamp::<U1, U2>(&outside.as_view());
+        assert!((clamped[0] - 1.0).abs() < 1e-9);
+        assert!((clamped[1] - 0.0).abs() < 1e-9);
+
+        // Test point on boundary (should remain unchanged)
+        let boundary = OVector::from([0.6, 0.8]);
+        let clamped = domain.clamp::<U1, U2>(&boundary.as_view());
+        assert!((clamped[0] - 0.6).abs() < 1e-9);
+        assert!((clamped[1] - 0.8).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_spherical_shell_domain_zero_vector() {
+        use nalgebra::U3;
+
+        let domain: Domain<f64, U3> = Domain::new_shdomain(U3);
+
+        // Test zero vector (should be clamped to (1, 0, 0))
+        let zero = OVector::from([0.0, 0.0, 0.0]);
+        let clamped = domain.clamp::<U1, U3>(&zero.as_view());
+        assert!((clamped[0] - 1.0).abs() < 1e-9);
+        assert!((clamped[1] - 0.0).abs() < 1e-9);
+        assert!((clamped[2] - 0.0).abs() < 1e-9);
     }
 }

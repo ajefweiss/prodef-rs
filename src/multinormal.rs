@@ -1,13 +1,13 @@
 //! A module that implements a multivariate normal PDF.
 
-use crate::{Density, RejectionSampler, SamplingMode, domain::Domain, macros::tval};
+use crate::{Density, domain::Domain, sampling::RejectionSampling, tval};
 use itertools::{Itertools, zip_eq};
 use nalgebra::{
     Const, DMatrix, DVector, DefaultAllocator, Dim, Dyn, MatrixView, OMatrix, OVector, RealField,
     Scalar, U1, VectorView, allocator::Allocator,
 };
-use rand::RngExt;
-use rand_distr::{Distribution, StandardNormal};
+use rand::{RngExt, SeedableRng};
+use rand_distr::{Distribution, StandardNormal, StandardUniform};
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
@@ -77,16 +77,16 @@ use std::{
 ///
 /// Sample from the distribution:
 /// ```
-/// # use prodef::{MultivariateNormalDensity, Density, SamplingMode};
-/// # use nalgebra::{OVector, U2, Matrix2};
+/// # use prodef::{MultivariateNormalDensity, Density, Sampler};
+/// # use nalgebra::{Const, OVector, U2, Matrix2};
 /// # use prodef::Domain;
 /// # use rand::{SeedableRng, rngs::StdRng};
 /// let mean = OVector::from([0.0, 0.0]);
 /// let covariance = Matrix2::from_element(1.0);
 /// let domain = Domain::new_udomain(U2);
 /// if let Some(dist) = MultivariateNormalDensity::new(covariance, domain, Some(mean)) {
-///     let mut rng = StdRng::seed_from_u64(42);
-///     if let Some(sample) = (&dist).sample(&mut rng, &SamplingMode::default()) {
+///     let mut sampler = Sampler::new(StdRng::seed_from_u64(42), Const::<2>);
+///     if let Some(sample) = (&dist).sample(&mut sampler) {
 ///         println!("Generated sample: {:?}", sample);
 ///     }
 /// }
@@ -118,8 +118,9 @@ where
     T: RealField,
     D: Dim,
     DefaultAllocator: Allocator<D> + Allocator<U1, D> + Allocator<D, D>,
+    StandardUniform: Distribution<T>,
 {
-    /// Returns the value of the bilinear form x^T * A^-1 * y, where A is the covariance matrix of the multivariate normal distribution.
+    /// Returns the value of the bilinear form x^T * A^-1 * y, where A is the covariance matrix of the multivariate normal distributio n.
     pub fn bilinear_map<RStride: Dim, CStride: Dim>(
         &self,
         x: &VectorView<T, D, RStride, CStride>,
@@ -134,6 +135,10 @@ where
     }
 
     /// Returns the determinant of the covariance matrix.
+    ///
+    /// The determinant is computed from the diagonal of the LTM decomposition. Since
+    /// `ltm` stores `L * sqrt(D)` for a decomposed covariance `L * D * Lᵀ`, we square
+    /// the product of the diagonal entries to recover |Σ|.
     pub fn determinant(&self) -> T {
         self.ltm
             .diagonal()
@@ -166,6 +171,9 @@ where
         }
 
         // Construct the covariance matrix.
+        // Only compute the upper triangular half of the matrix here, then mirror it
+        // to ensure symmetry. This avoids duplicate work for the covariance of each pair
+        // of dimensions.
         let covariance_half = OMatrix::<T, D, D>::from_iterator_generic(
             n_dim,
             n_dim,
@@ -192,14 +200,16 @@ where
             }),
         );
 
-        // Fill up the other side of the covariance matrix.
-        let covariance = covariance_half.clone() + covariance_half.transpose() - OMatrix::from_diagonal(&covariance_half.diagonal());
+        // Reflect the upper triangular part to the lower triangular side to obtain
+        // a fully symmetric covariance matrix.
+        let covariance = covariance_half.clone() + covariance_half.transpose()
+            - OMatrix::from_diagonal(&covariance_half.diagonal());
 
         let mut mean = vectors.column_mean();
 
-        // Set mean to first particle value if covariance is zero.
-        // This fixes numerical issues where taking the mean over many
-        // particles does not equal the constant value.
+        // If any dimension has zero covariance, use the first particle in that
+        // dimension as the mean. This stabilizes degenerate cases where the sample
+        // covariance is exactly zero and the default mean estimate can be unreliable.
         covariance
             .diagonal()
             .iter()
@@ -227,7 +237,9 @@ where
 
         let mut n_dim = self.covariance.shape_generic().0.value();
 
-        // Detect zero'd columns/rows that need to be modified.
+        // For degenerate dimensions, replace zero diagonal values with infinity-like
+        // entries and zero out the corresponding off-diagonals. This effectively
+        // removes singular directions from the KL divergence contribution.
         (0..l_0.nrows()).for_each(|idx| {
             if l_0[(idx, idx)].is_zero() {
                 l_0[(idx, idx)] = T::one() / T::zero();
@@ -261,7 +273,8 @@ where
 
         let mut m = l_1.clone().solve_lower_triangular(&l_0).unwrap();
 
-        // Detect NaN's and zero them out.
+        // Detect NaN's and zero them out so numerical instabilities do not propagate
+        // into the final divergence value.
         m.iter_mut().for_each(|value| {
             if !value.is_finite() {
                 *value = T::zero()
@@ -271,6 +284,9 @@ where
         let y = l_1.clone().solve_lower_triangular(&(mu_1 - mu_0)).unwrap();
 
         Some(
+            // KL divergence of two multivariate normals:
+            // 0.5 * [ tr(Σ1⁻¹ Σ0) - d + (μ1-μ0)ᵀ Σ1⁻¹ (μ1-μ0) + ln(|Σ1|/|Σ0|) ]
+            // Here the computation is expressed in terms of the lower-triangular decompositions.
             (m.iter().cloned().sum::<T>() - tval!(n_dim, usize)
                 + y.norm()
                 + tval!(2, usize)
@@ -290,23 +306,6 @@ where
         )
     }
 
-    /// Returns the logarithm of the multivariate normal PDF at the given sample point.
-    pub fn log_density<RStride: Dim, CStride: Dim>(
-        &self,
-        sample: &VectorView<T, D, RStride, CStride>,
-    ) -> Option<T> {
-        if !self.domain.contains(sample) {
-            return None;
-        }
-
-        Some(
-            -(self.determinant().ln()
-                + self.mahalanobis_distance_sq(sample)
-                + tval!(self.rank(), usize) * T::two_pi().ln())
-                / tval!(2, usize),
-        )
-    }
-
     /// Returns a reference to the LTM decomposition of the covariance matrix.
     pub fn lower_triangular_matrix(&self) -> &OMatrix<T, D, D> {
         &self.ltm
@@ -314,15 +313,6 @@ where
 
     /// Returns the (squared) Mahalanobis distance.
     pub fn mahalanobis_distance_sq<RStride: Dim, CStride: Dim>(
-        &self,
-        x: &VectorView<T, D, RStride, CStride>,
-    ) -> T {
-        let xm = &(x - &self.mean);
-        (xm.transpose() * &self.inverse * xm)[(0, 0)].clone()
-    }
-
-    /// Returns the (squared) Mahalanobis distance (copy variant available).
-    pub fn mahalanobis_distance_sq_copy<RStride: Dim, CStride: Dim>(
         &self,
         x: &VectorView<T, D, RStride, CStride>,
     ) -> T {
@@ -366,6 +356,9 @@ where
                 covariance.iter().cloned(),
             );
 
+            // Use a pseudo-inverse to support singular or nearly singular covariance matrices.
+            // Later we explicitly zero any rows/columns in the pseudo-inverse corresponding to
+            // exact zero variances to preserve degenerate subspaces.
             let mut pinv = dmatrix
                 .clone_owned()
                 .pseudo_inverse(T::default_epsilon())
@@ -395,6 +388,8 @@ where
         let mut d = OVector::<T, D>::zeros_generic(n_dim, Const::<1>);
         let mut l = OMatrix::<T, D, D>::zeros_generic(n_dim, n_dim);
 
+        // Compute an L D Lᵀ-style decomposition of the covariance matrix. Here `d` stores
+        // the diagonal scaling terms and `l` stores the lower triangular factor.
         for cdx in 0..n_dim.value() {
             let mut d_j = covariance[(cdx, cdx)].clone();
 
@@ -432,6 +427,9 @@ where
             d.iter().map(|value| value.clone().sqrt()),
         ));
 
+        // `lsqrtd` is the lower triangular factor multiplied by sqrt(diagonal scale),
+        // which can be used to efficiently generate correlated normal samples.
+
         Some(Self {
             covariance,
             inverse,
@@ -467,6 +465,7 @@ where
     D: Dim,
     DefaultAllocator: Allocator<D> + Allocator<U1, D> + Allocator<D, D>,
     StandardNormal: Distribution<T>,
+    StandardUniform: Distribution<T>,
 {
     fn density<RStride: Dim, CStride: Dim>(
         &self,
@@ -486,15 +485,37 @@ where
         self.domain.clone()
     }
 
+    fn log_density<RStride: Dim, CStride: Dim>(
+        &self,
+        sample: &VectorView<T, D, RStride, CStride>,
+    ) -> Option<T> {
+        if !self.domain.contains(sample) {
+            return None;
+        }
+
+        Some(
+            -(self.determinant().ln()
+                + self.mahalanobis_distance_sq(sample)
+                + tval!(self.rank(), usize) * T::two_pi().ln())
+                / tval!(2, usize),
+        )
+    }
+
     fn mean(&self) -> OVector<T, D> {
         self.mean.clone()
     }
 
-    fn sample(&self, rng: &mut impl RngExt, mode: &SamplingMode) -> Option<OVector<T, D>> {
-        self.rejection_sample(rng, mode)
+    fn sample<R>(&self, rng: &mut R) -> Option<OVector<T, D>>
+    where
+        R: RngExt + SeedableRng,
+    {
+        self.rejection_sample(rng)
     }
 
-    fn sample_iter(&self, rng: &mut impl RngExt) -> impl Iterator<Item = Option<OVector<T, D>>> {
+    fn sample_iter<R>(&self, rng: &mut R) -> impl Iterator<Item = Option<OVector<T, D>>>
+    where
+        R: RngExt + SeedableRng,
+    {
         let normal = StandardNormal;
         let n_dim = self.covariance.shape_generic().0;
 
@@ -521,23 +542,33 @@ where
     }
 }
 
-impl<T, D> RejectionSampler<T, D> for &MultivariateNormalDensity<T, D>
+impl<T, D> RejectionSampling<T, D> for &MultivariateNormalDensity<T, D>
 where
     T: RealField,
     D: Dim,
     DefaultAllocator: Allocator<D> + Allocator<U1, D> + Allocator<D, D>,
     StandardNormal: Distribution<T>,
+    StandardUniform: Distribution<T>,
 {
-    fn generate_candidate(&self, rng: &mut impl RngExt) -> OVector<T, D> {
+    fn rejection_candidate<R>(&self, rng: &mut R) -> (OVector<T, D>, Option<T>)
+    where
+        R: RngExt + SeedableRng,
+    {
         let n_dim = self.covariance.shape_generic().0;
 
-        self.mean.clone()
+        let candidate = self.mean.clone()
             + &self.ltm
                 * OVector::<T, D>::from_iterator_generic(
                     n_dim,
                     U1,
                     (0..n_dim.value()).map(|_| rng.sample(StandardNormal)),
-                )
+                );
+
+        (candidate, None)
+    }
+
+    fn scale_factor(&self) -> T {
+        T::one()
     }
 }
 

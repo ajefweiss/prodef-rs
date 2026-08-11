@@ -1,7 +1,7 @@
-use crate::{Density, RejectionSampler, SamplingMode, domain::Domain, macros::tval};
+use crate::{Density, domain::Domain, sampling::RejectionSampling, tval};
 use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
-use rand::RngExt;
-use rand_distr::{Distribution, StandardNormal};
+use rand::{RngExt, SeedableRng};
+use rand_distr::{Distribution, StandardNormal, StandardUniform};
 use serde::{Deserialize, Serialize};
 
 /// A lognormal PDF.
@@ -69,6 +69,7 @@ impl<T> Density<T, U1> for LognormalDensity<T>
 where
     T: RealField,
     StandardNormal: Distribution<T>,
+    StandardUniform: Distribution<T>,
 {
     fn density<RStride: Dim, CStride: Dim>(
         &self,
@@ -98,20 +99,28 @@ where
         SVector::from([(self.0.clone() + self.1.clone().powi(2) / tval!(2, usize)).exp()])
     }
 
-    fn sample(&self, rng: &mut impl RngExt, mode: &SamplingMode) -> Option<SVector<T, 1>> {
-        self.rejection_sample(rng, mode)
+    fn sample<R>(&self, rng: &mut R) -> Option<SVector<T, 1>>
+    where
+        R: RngExt + SeedableRng,
+        nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
+    {
+        self.rejection_sample(rng)
     }
 
-    fn sample_iter(&self, rng: &mut impl RngExt) -> impl Iterator<Item = Option<SVector<T, 1>>> {
+    fn sample_iter<R>(&self, rng: &mut R) -> impl Iterator<Item = Option<SVector<T, 1>>>
+    where
+        R: RngExt + SeedableRng,
+        nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
+    {
         let normal = StandardNormal;
         let mu = self.0.clone();
         let sigma = self.1.clone();
         let domain = self.2.clone();
 
-        rng.sample_iter(normal).map(move |z| {
+        rng.sample_iter(normal).map(move |value| {
             // If z ~ N(0, 1), then exp(μ + σ*z) ~ LogNormal(μ, σ)
             let sample =
-                OVector::from_element_generic(U1, U1, (mu.clone() + sigma.clone() * z).exp());
+                OVector::from_element_generic(U1, U1, (mu.clone() + sigma.clone() * value).exp());
 
             // Check if sample is within domain bounds
             if domain.contains::<U1, U1>(&sample.as_view()) {
@@ -132,15 +141,26 @@ where
     }
 }
 
-impl<T> RejectionSampler<T, U1> for &LognormalDensity<T>
+impl<T> RejectionSampling<T, U1> for LognormalDensity<T>
 where
     T: RealField,
     StandardNormal: Distribution<T>,
+    StandardUniform: Distribution<T>,
 {
-    fn generate_candidate(&self, rng: &mut impl RngExt) -> SVector<T, 1> {
-        let normal = StandardNormal;
-        let z = rng.sample(normal);
-        SVector::from([(self.0.clone() + self.1.clone() * z).exp()])
+    fn rejection_candidate<R>(&self, rng: &mut R) -> (SVector<T, 1>, Option<T>)
+    where
+        R: RngExt + SeedableRng,
+        nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
+    {
+        let z = rng.sample(StandardNormal);
+
+        let candidate = SVector::from([(self.0.clone() + self.1.clone() * z).exp()]);
+
+        (candidate, None)
+    }
+
+    fn scale_factor(&self) -> T {
+        T::one()
     }
 }
 

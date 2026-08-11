@@ -14,10 +14,13 @@ pub use loguniform::*;
 pub use normal::*;
 pub use uniform::*;
 
-use crate::{Density, MultivariateDensity, SamplingMode, domain::Domain};
-use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
-use rand::RngExt;
-use rand_distr::{Distribution, StandardNormal, uniform::SampleUniform};
+use crate::{Density, MultivariateDensity, domain::Domain};
+use nalgebra::{
+    DefaultAllocator, Dim, OVector, RealField, SVector, Scalar, U1, VectorView,
+    allocator::Allocator,
+};
+use rand::{RngExt, SeedableRng};
+use rand_distr::{Distribution, StandardNormal, StandardUniform, uniform::SampleUniform};
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, iter::repeat_with};
 
@@ -60,13 +63,14 @@ impl<T> Density<T, U1> for UnivariateDensity<T>
 where
     T: RealField + SampleUniform,
     StandardNormal: Distribution<T>,
+    StandardUniform: Distribution<T>,
 {
     fn density<RStride: Dim, CStride: Dim>(
         &self,
         sample: &VectorView<T, U1, RStride, CStride>,
     ) -> Option<T> {
         match_univariate!(self, pdf, {
-            Density::<T, U1>::density::<RStride, CStride>(&pdf, sample)
+            Density::<T, U1>::density::<RStride, CStride>(pdf, sample)
         })
     }
 
@@ -85,9 +89,13 @@ where
         match_univariate!(self, pdf, { pdf.mean() })
     }
 
-    fn sample(&self, rng: &mut impl RngExt, mode: &SamplingMode) -> Option<SVector<T, 1>> {
+    fn sample<R>(&self, rng: &mut R) -> Option<SVector<T, 1>>
+    where
+        R: RngExt + SeedableRng,
+        DefaultAllocator: Allocator<U1>,
+    {
         let sample = match_univariate!(self, pdf, {
-            match Density::<T, U1>::sample(&pdf, rng, mode) {
+            match Density::<T, U1>::sample(pdf, rng) {
                 Some(draw) => draw[0].clone(),
                 None => return None,
             }
@@ -96,12 +104,15 @@ where
         Some(OVector::from([sample]))
     }
 
-    fn sample_iter(&self, rng: &mut impl RngExt) -> impl Iterator<Item = Option<SVector<T, 1>>> {
+    fn sample_iter<R>(&self, rng: &mut R) -> impl Iterator<Item = Option<SVector<T, 1>>>
+    where
+        R: RngExt + SeedableRng,
+        DefaultAllocator: Allocator<U1>,
+    {
         // Likely not very efficient, but the only way to have a unique opaque return type.
         repeat_with(move || {
             match_univariate!(self, pdf, {
-                Density::<T, U1>::sample(&pdf, rng, &SamplingMode::SingleAttempt)
-                    .map(|value| OVector::from([value[0].clone()]))
+                Density::<T, U1>::sample(pdf, rng).map(|value| OVector::from([value[0].clone()]))
             })
         })
     }

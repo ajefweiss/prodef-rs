@@ -1,6 +1,6 @@
-use crate::{Density, SamplingMode, domain::Domain, macros::tval};
+use crate::{Density, domain::Domain, tval};
 use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
-use rand::RngExt;
+use rand::{RngExt, SeedableRng};
 use rand_distr::{Uniform, uniform::SampleUniform};
 use serde::{Deserialize, Serialize};
 
@@ -82,7 +82,11 @@ where
         SVector::from([(b.clone() - a.clone()) / (b.ln() - a.ln())])
     }
 
-    fn sample(&self, rng: &mut impl RngExt, _mode: &SamplingMode) -> Option<SVector<T, 1>> {
+    fn sample<R>(&self, rng: &mut R) -> Option<SVector<T, 1>>
+    where
+        R: RngExt + SeedableRng,
+        nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
+    {
         let uniform = Uniform::new_inclusive(
             self.0.minimum_values()[0].clone().unwrap().ln(),
             self.0.maximum_values()[0].clone().unwrap().ln(),
@@ -92,7 +96,11 @@ where
         Some(SVector::from([rng.sample(uniform).exp()]))
     }
 
-    fn sample_iter(&self, rng: &mut impl RngExt) -> impl Iterator<Item = Option<SVector<T, 1>>> {
+    fn sample_iter<R>(&self, rng: &mut R) -> impl Iterator<Item = Option<SVector<T, 1>>>
+    where
+        R: RngExt + SeedableRng,
+        nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
+    {
         let uniform = Uniform::new_inclusive(
             self.0.minimum_values()[0].clone().unwrap().ln(),
             self.0.maximum_values()[0].clone().unwrap().ln(),

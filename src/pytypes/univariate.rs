@@ -18,7 +18,7 @@ pub struct PyUnivariate {
 
 impl PyUnivariate {
     /// Return a reference to the underlying [`UnivariateDensity`].
-    pub fn density(&self) -> &UnivariateDensity<Float> {
+    pub fn inner(&self) -> &UnivariateDensity<Float> {
         &self.density
     }
 

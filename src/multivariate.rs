@@ -1,16 +1,13 @@
 //! A module that implements multiple univariate PDFs and a multivariate distribution that is a product of independent univariate PDFs.
 
-use crate::{
-    Density, SamplingMode, UnivariateDensity, domain::Domain, macros::tval,
-    univariate::match_univariate,
-};
+use crate::{Density, UnivariateDensity, domain::Domain, tval, univariate::match_univariate};
 use derive_more::IntoIterator;
 use nalgebra::{
     DefaultAllocator, Dim, OVector, RealField, SVector, Scalar, U1, VectorView,
     allocator::Allocator,
 };
-use rand::RngExt;
-use rand_distr::{Distribution, StandardNormal, uniform::SampleUniform};
+use rand::{RngExt, SeedableRng};
+use rand_distr::{Distribution, StandardNormal, StandardUniform, uniform::SampleUniform};
 use serde::{Deserialize, Serialize};
 use std::{f64, fmt::Debug, iter::repeat_with};
 
@@ -65,15 +62,15 @@ use std::{f64, fmt::Debug, iter::repeat_with};
 /// Sample from the distribution:
 /// ```
 /// # use nalgebra::{U2, SVector};
-/// # use prodef::{ConstantDensity, MultivariateDensity, NormalDensity, UniformDensity, Density, SamplingMode};
+/// # use prodef::{ConstantDensity, MultivariateDensity, NormalDensity, UniformDensity, Density, Sampler};
 /// # use rand::{SeedableRng, rngs::StdRng};
 /// let marginals = SVector::from([
 ///     NormalDensity::new(0.0, 1.0, None, None).unwrap().into(),
 ///     UniformDensity::new(-1.0, 1.0).unwrap().into(),
 /// ]);
 /// let dist = MultivariateDensity::<f64, U2>::new(marginals);
-/// let mut rng = StdRng::seed_from_u64(42);
-/// if let Some(sample) = (&dist).sample(&mut rng, &SamplingMode::default()) {
+/// let mut sampler = Sampler::new(StdRng::seed_from_u64(42), U2);
+/// if let Some(sample) = (&dist).sample(&mut sampler) {
 ///     println!("Generated sample: {:?}", sample);
 /// }
 /// ```
@@ -107,8 +104,9 @@ impl<T, D> Density<T, D> for MultivariateDensity<T, D>
 where
     T: RealField + SampleUniform,
     D: Dim,
-    StandardNormal: Distribution<T>,
     DefaultAllocator: Allocator<D>,
+    StandardNormal: Distribution<T>,
+    StandardUniform: Distribution<T>,
 {
     fn density<RStride: Dim, CStride: Dim>(
         &self,
@@ -124,7 +122,7 @@ where
             let vec = SVector::from([value.clone()]);
 
             rlh *= match_univariate!(uvpdf, pdf, {
-                Density::<T, U1>::density::<U1, U1>(&pdf, &vec.as_view())
+                Density::<T, U1>::density::<U1, U1>(pdf, &vec.as_view())
             })
             .unwrap_or(tval!(f64::NAN, f64));
         });
@@ -165,30 +163,41 @@ where
         )
     }
 
-    fn sample(&self, rng: &mut impl RngExt, mode: &SamplingMode) -> Option<OVector<T, D>> {
+    fn sample<R>(&self, rng: &mut R) -> Option<OVector<T, D>>
+    where
+        R: RngExt + SeedableRng,
+    {
         let mut draw = OVector::<T, D>::zeros_generic(self.0.shape_generic().0, U1);
 
-        for i in 0..self.0.shape_generic().0.value() {
-            draw[i] = match_univariate!(&self.0[i], pdf, {
-                match Density::<T, U1>::sample(&pdf, rng, mode) {
+        for idx in 0..self.0.shape_generic().0.value() {
+            draw[idx] = match_univariate!(&self.0[idx], pdf, {
+                let result = match Density::<T, U1>::sample(pdf, &mut rng.fork()) {
                     Some(sample) => sample[0].clone(),
                     None => return None,
-                }
+                };
+
+                result
             });
         }
 
         Some(draw)
     }
 
-    fn sample_iter(&self, rng: &mut impl RngExt) -> impl Iterator<Item = Option<OVector<T, D>>> {
+    fn sample_iter<R>(&self, rng: &mut R) -> impl Iterator<Item = Option<OVector<T, D>>>
+    where
+        R: RngExt + SeedableRng,
+    {
         let n_dim = self.0.shape_generic().0;
 
         repeat_with(move || {
             let draw_opts = OVector::<Option<SVector<T, 1>>, D>::from_iterator_generic(
                 n_dim,
                 U1,
-                self.into_iter()
-                    .map(|pdf| pdf.sample(rng, &SamplingMode::SingleAttempt)),
+                self.into_iter().map(|pdf| {
+                    let result = pdf.sample(&mut rng.fork());
+
+                    result
+                }),
             );
 
             if draw_opts.iter().any(|draw| draw.is_none()) {

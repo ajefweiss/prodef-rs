@@ -1,6 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use nalgebra::{DMatrix, DVector, Dyn, OVector, U1};
-use prodef::{Density, Domain, MultivariateNormalDensity, SamplingMode};
+use prodef::{Density, Domain, MultivariateNormalDensity};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::{hint::black_box, time::Duration};
@@ -44,11 +44,9 @@ fn bench_multinormal_sample(c: &mut Criterion) {
 
         group.throughput(criterion::Throughput::Elements((*dim * 100) as u64));
         group.bench_function(format!("sample_dim_{}", dim), |b| {
-            let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
             b.iter(|| {
-                (0..100)
-                    .map(|_| dist.sample(&mut rng, &SamplingMode::SingleAttempt))
-                    .last()
+                let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
+                (0..100).map(|_| dist.sample(&mut rng)).last()
             })
         });
     }
@@ -67,18 +65,16 @@ fn bench_multinormal_sample_bounded(c: &mut Criterion) {
         let domain: Domain<f64, Dyn> = Domain::new_mdomain(OVector::from_element_generic(
             Dyn(*dim),
             U1,
-            (Some(-0.05), Some(0.05)),
+            (Some(-0.75), Some(0.75)),
         ));
         let dist =
             black_box(MultivariateNormalDensity::new(cov, domain, Some(mean.clone())).unwrap());
 
         group.throughput(criterion::Throughput::Elements((*dim * 100) as u64));
         group.bench_function(format!("sample_dim_{}", dim), |b| {
-            let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
             b.iter(|| {
-                (0..100)
-                    .map(|_| dist.sample(&mut rng, &SamplingMode::SingleAttempt))
-                    .last()
+                let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
+                (0..100).map(|_| dist.sample(&mut rng)).last()
             })
         });
     }
@@ -100,8 +96,10 @@ fn bench_multinormal_sample_iter(c: &mut Criterion) {
 
         group.throughput(criterion::Throughput::Elements((*dim * 100) as u64));
         group.bench_function(format!("sample_iter_dim_{}", dim), |b| {
-            let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
-            b.iter(|| dist.sample_iter(&mut rng).take(100).flatten().last())
+            b.iter(|| {
+                let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
+                dist.sample_iter(&mut rng).take(100).flatten().last()
+            })
         });
     }
 
