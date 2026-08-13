@@ -62,15 +62,15 @@ use std::{f64, fmt::Debug, iter::repeat_with};
 /// Sample from the distribution:
 /// ```
 /// # use nalgebra::{U2, SVector};
-/// # use prodef::{ConstantDensity, MultivariateDensity, NormalDensity, UniformDensity, Density, Sampler};
+/// # use prodef::{ConstantDensity, MultivariateDensity, NormalDensity, UniformDensity, Density};
 /// # use rand::{SeedableRng, rngs::StdRng};
 /// let marginals = SVector::from([
 ///     NormalDensity::new(0.0, 1.0, None, None).unwrap().into(),
 ///     UniformDensity::new(-1.0, 1.0).unwrap().into(),
 /// ]);
 /// let dist = MultivariateDensity::<f64, U2>::new(marginals);
-/// let mut sampler = Sampler::new(StdRng::seed_from_u64(42), U2);
-/// if let Some(sample) = (&dist).sample(&mut sampler) {
+/// let mut rng = StdRng::seed_from_u64(42);
+/// if let Some(sample) = (&dist).sample(&mut rng) {
 ///     println!("Generated sample: {:?}", sample);
 /// }
 /// ```
@@ -135,7 +135,7 @@ where
             self.0.shape_generic().0,
             U1,
             self.0.iter().map(|uvpdf| {
-                let (a, b) = match uvpdf {
+                let (lower_bound, upper_bound) = match uvpdf {
                     UnivariateDensity::Constant(pdf) => {
                         (Some(pdf.constant()), Some(pdf.constant()))
                     }
@@ -148,7 +148,7 @@ where
                     UnivariateDensity::Uniform(pdf) => (Some(pdf.minimum()), Some(pdf.maximum())),
                 };
 
-                (a, b)
+                (lower_bound, upper_bound)
             }),
         ))
     }
@@ -190,29 +190,12 @@ where
         let n_dim = self.0.shape_generic().0;
 
         repeat_with(move || {
-            let draw_opts = OVector::<Option<SVector<T, 1>>, D>::from_iterator_generic(
-                n_dim,
-                U1,
-                self.into_iter().map(|pdf| {
-                    let result = pdf.sample(&mut rng.fork());
+            let mut draw = OVector::<T, D>::zeros_generic(n_dim, U1);
 
-                    result
-                }),
-            );
-
-            if draw_opts.iter().any(|draw| draw.is_none()) {
-                return None;
+            for (idx, pdf) in self.into_iter().enumerate() {
+                let sample = pdf.sample(&mut rng.fork())?;
+                draw[idx] = sample[0].clone();
             }
-
-            // All samples are guaranteed to be Some due to check above
-            let draw = OVector::<T, D>::from_iterator_generic(
-                n_dim,
-                U1,
-                draw_opts.iter().map(|opt_draw| {
-                    // Safe: we verified no None values exist above
-                    opt_draw.as_ref().unwrap()[0].clone()
-                }),
-            );
 
             Some(draw)
         })

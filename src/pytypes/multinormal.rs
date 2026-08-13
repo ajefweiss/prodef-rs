@@ -62,26 +62,40 @@ impl PyMultivariateNormal {
 
         let domain = match domain {
             Some(sdoms) => {
-                let sdoms = sdoms
-                    .iter()
-                    .map(|d| d.extract::<(Option<Float>, Option<Float>)>().ok())
-                    .collect::<Vec<Option<(Option<Float>, Option<Float>)>>>();
+                // let sdoms = sdoms
+                //     .iter()
+                //     .map(|d| d.extract::<(Option<Float>, Option<Float>)>().ok())
+                //     .collect::<Vec<Option<(Option<Float>, Option<Float>)>>>();
 
-                if sdoms
+                // if sdoms
+                //     .iter()
+                //     .any(|min_max| min_max.is_none() || (min_max.unwrap().1 < min_max.unwrap().0))
+                // {
+                //     return Err(PyTypeError::new_err(
+                //         "failed to convert one of the members of the domain argument to a PySDomain type",
+                //     ));
+                // }
+
+                let sdoms: Vec<(Option<Float>, Option<Float>)> = sdoms
                     .iter()
-                    .any(|min_max| min_max.is_none() || (min_max.unwrap().1 < min_max.unwrap().0))
-                {
+                    .map(|d| d.extract::<(Option<Float>, Option<Float>)>())
+                    .collect::<PyResult<_>>()
+                    .map_err(|_| {
+                        PyTypeError::new_err(
+                            "failed to convert one of the members of the domain argument",
+                        )
+                    })?;
+
+                if sdoms.iter().any(|(min, max)| match (min, max) {
+                    (Some(a), Some(b)) => b < a,
+                    _ => false,
+                }) {
                     return Err(PyTypeError::new_err(
-                        "failed to convert one of the members of the domain argument to a PySDomain type",
+                        "domain bounds must satisfy min <= max",
                     ));
                 }
 
-                Domain::new_mdomain(DVector::from(
-                    sdoms
-                        .into_iter()
-                        .map(|value| value.unwrap())
-                        .collect::<Vec<(Option<Float>, Option<Float>)>>(),
-                ))
+                Domain::new_mdomain(DVector::from_vec(sdoms))
             }
             None => Domain::new_udomain(Dyn(matrix.nrows())),
         };

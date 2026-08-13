@@ -77,16 +77,16 @@ use std::{
 ///
 /// Sample from the distribution:
 /// ```
-/// # use prodef::{MultivariateNormalDensity, Density, Sampler};
-/// # use nalgebra::{Const, OVector, U2, Matrix2};
+/// # use prodef::{MultivariateNormalDensity, Density};
+/// # use nalgebra::{OVector, U2, Matrix2};
 /// # use prodef::Domain;
 /// # use rand::{SeedableRng, rngs::StdRng};
 /// let mean = OVector::from([0.0, 0.0]);
 /// let covariance = Matrix2::from_element(1.0);
 /// let domain = Domain::new_udomain(U2);
 /// if let Some(dist) = MultivariateNormalDensity::new(covariance, domain, Some(mean)) {
-///     let mut sampler = Sampler::new(StdRng::seed_from_u64(42), Const::<2>);
-///     if let Some(sample) = (&dist).sample(&mut sampler) {
+///     let mut rng = StdRng::seed_from_u64(42);
+///     if let Some(sample) = (&dist).sample(&mut rng) {
 ///         println!("Generated sample: {:?}", sample);
 ///     }
 /// }
@@ -164,9 +164,13 @@ where
     {
         let n_dim = vectors.shape_generic().0;
         let n_dim_b = domain.shape_generic();
+        let n_weights = match opt_weights {
+            Some(weights) => weights.len(),
+            None => n_dim.value(),
+        };
 
-        // Check dimensions (only required for D = Dyn).
-        if n_dim.value() != n_dim_b.value() {
+        // Check dimensions of the input vector matrix, the domain and the weights.
+        if n_dim.value() != n_dim_b.value() || n_dim.value() == 0 || n_weights != n_dim.value() {
             return None;
         }
 
@@ -188,8 +192,10 @@ where
                     if !x.iter().all_equal() && !y.iter().all_equal() {
                         match opt_weights {
                             Some(w) => covariance_with_weights(x, y, w)
-                                .expect("failed to compute covariance"),
-                            None => covariance(x, y).expect("failed to compute covariance"),
+                                .expect("covariance_with_weights was given a zero length vector"),
+                            None => {
+                                covariance(x, y).expect("covariance was given a zero length vector")
+                            }
                         }
                     } else {
                         T::zero()

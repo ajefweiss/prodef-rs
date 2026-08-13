@@ -1,8 +1,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use nalgebra::{DMatrix, DVector, Dyn, OVector, U1};
 use prodef::{Density, Domain, MultivariateNormalDensity};
-use rand::SeedableRng;
-use rand_xoshiro::Xoshiro256PlusPlus;
+use rand::{SeedableRng, rngs::Xoshiro256PlusPlus};
 use std::{hint::black_box, time::Duration};
 
 fn bench_multinormal_density(c: &mut Criterion) {

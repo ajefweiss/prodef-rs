@@ -26,14 +26,11 @@ use rand::{RngExt, SeedableRng};
 ///
 /// **Normalization**: The returned density value is not necessarily normalized to integrate to 1.
 ///
-/// **Sampling**: The `sample()` method uses a configurable `SamplingMode` enum to handle
-/// boundary constraints during sampling:
-/// - `SingleAttempt`: Fail fast if out-of-domain
-/// - `UntilValid`: Retry with budget limit (default: 512 attempts)
-/// - `UntilValidOrClamp`: Clamp to boundary if attempts budget exceeded
-/// - `UntilValidNoLimit`: Keep resampling until valid
-///
-/// The `sample_iter()` method provides an iterator interface for generating samples according to the specified sampling mode, yielding `None` for failed sampling attempts.
+/// **Sampling**: The `sample()` and `sample_iter()` methods draw values from the distribution
+/// using the caller-provided RNG. When a distribution defines a finite or truncated domain,
+/// implementations typically reject out-of-domain candidates and return `None` for unsuccessful
+/// attempts. The iterator form yields `None` for failed draws, while successful iterations produce
+/// samples within the distribution's valid domain.
 ///
 /// # Stride Generics
 ///
@@ -59,14 +56,13 @@ use rand::{RngExt, SeedableRng};
 ///
 /// Sampling from a distribution:
 /// ```
-/// # use prodef::{Density, SamplingMode};
+/// # use prodef::{Density};
 /// # use nalgebra::{SVector, U1};
 /// # use rand::{SeedableRng, rngs::StdRng};
 /// # let normal = prodef::NormalDensity::new(0.0, 1.0, Some(-3.0), Some(3.0)).unwrap();
 /// let mut rng = StdRng::seed_from_u64(42);
-/// let mode = SamplingMode::default();
 ///
-/// if let Some(sample) = (&normal).sample(&mut rng, &mode) {
+/// if let Some(sample) = (&normal).sample(&mut rng) {
 ///     println!("Generated sample: {}", sample[0]);
 /// }
 /// ```
@@ -123,7 +119,10 @@ where
         self.density(sample).map(|d| d.ln())
     }
 
-    /// Returns the mean of the distribution.
+    /// Returns the distribution's center as implemented by the concrete type.
+    ///
+    /// For bounded or truncated distributions, this value may be a domain-aware
+    /// approximation rather than the exact theoretical mean.
     fn mean(&self) -> OVector<T, D>
     where
         DefaultAllocator: Allocator<D>;

@@ -20,16 +20,20 @@ where
     /// - `sigma <= 0` (standard deviation must be positive)
     /// - `a >= b` (invalid bounds)
     /// - `a < 0` (lower bound must be non-negative, as lognormal is defined on (0, ∞))
-    pub fn new(mu: T, sigma: T, a: T, b: T) -> Option<Self> {
+    pub fn new(mu: T, sigma: T, lower_bound: T, upper_bound: T) -> Option<Self> {
         if sigma <= T::zero() {
             return None;
         }
 
-        if a >= b || a < T::zero() {
+        if lower_bound >= upper_bound || lower_bound < T::zero() {
             return None;
         }
 
-        let domain = Domain::new_mdomain(OVector::from_element_generic(U1, U1, (Some(a), Some(b))));
+        let domain = Domain::new_mdomain(OVector::from_element_generic(
+            U1,
+            U1,
+            (Some(lower_bound), Some(upper_bound)),
+        ));
 
         Some(Self(mu, sigma, domain))
     }

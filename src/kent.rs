@@ -49,8 +49,8 @@ where
     ) -> Option<T> {
         let norm = sample.norm();
 
-        // Check if sample is on the unit sphere
-        if ulps_eq!(norm.clone(), T::one()) {
+        // Check if sample is on the unit sphere; return None when not on sphere
+        if !ulps_eq!(norm.clone(), T::one()) {
             return None;
         }
 

@@ -17,16 +17,16 @@ where
     /// Create a new [`LogUniformDensity`].
     ///
     /// Returns `None` if:
-    /// - `a >= b` (inverted or degenerate bounds)
-    /// - `a <= 0` or `b <= 0` (log domain requires positive values)
-    pub fn new(a: T, b: T) -> Option<Self> {
-        if a >= b || a <= T::zero() || b <= T::zero() {
+    /// - `lower_bound >= upper_bound` (inverted or degenerate bounds)
+    /// - `lower_bound <= 0` or `upper_bound <= 0` (log domain requires positive values)
+    pub fn new(lower_bound: T, upper_bound: T) -> Option<Self> {
+        if lower_bound >= upper_bound || lower_bound <= T::zero() || upper_bound <= T::zero() {
             None
         } else {
             Some(Self(Domain::new_mdomain(OVector::from_element_generic(
                 U1,
                 U1,
-                (Some(a), Some(b)),
+                (Some(lower_bound), Some(upper_bound)),
             ))))
         }
     }

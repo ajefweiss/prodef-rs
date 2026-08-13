@@ -32,34 +32,39 @@ where
     }
 
     /// Create a new [`NormalDensity`].
-    pub fn new(mean: T, std_dev: T, opt_a: Option<T>, opt_b: Option<T>) -> Option<Self> {
+    pub fn new(
+        mean: T,
+        std_dev: T,
+        lower_bound: Option<T>,
+        upper_bound: Option<T>,
+    ) -> Option<Self> {
         if std_dev <= T::zero() {
             return None;
         }
 
-        if opt_a.as_ref().unwrap_or(&T::neg(T::one())) >= opt_b.as_ref().unwrap_or(&T::one()) {
-            return None;
+        if let (Some(lower), Some(upper)) = (&lower_bound, &upper_bound) {
+            if lower >= upper {
+                return None;
+            }
         }
 
-        let domain = Domain::new_mdomain(OVector::from_element_generic(U1, U1, (opt_a, opt_b)));
+        let domain = Domain::new_mdomain(OVector::from_element_generic(
+            U1,
+            U1,
+            (lower_bound, upper_bound),
+        ));
 
         Some(Self(mean, std_dev, domain))
     }
 
     /// Returns the maximum value of the domain.
     pub fn maximum(&self) -> Option<T> {
-        match &self.2.inner().unwrap() {
-            (_, Some(max)) => Some(max.clone()),
-            _ => None,
-        }
+        self.2.inner().and_then(|(_, max)| max.clone())
     }
 
     /// Returns the minimum value of the domain.
     pub fn minimum(&self) -> Option<T> {
-        match &self.2.inner().unwrap() {
-            (Some(min), _) => Some(min.clone()),
-            _ => None,
-        }
+        self.2.inner().and_then(|(min, _)| min.clone())
     }
 }
 
@@ -90,19 +95,21 @@ where
     }
 
     fn mean(&self) -> SVector<T, 1> {
-        // For an unbounded normal distribution, returns the parameter μ.
-        // For a bounded normal distribution, returns an approximation accounting for truncation.
-        // If μ is within the domain, returns μ. Otherwise, returns the boundary point closer to μ.
+        // For an unbounded normal distribution, this is the parameter μ.
+        // For a bounded or truncated normal, we return a simple domain-aware
+        // approximation: if the nominal mean falls outside the valid interval,
+        // return the closer boundary; otherwise keep μ.
         let mu = self.0.clone();
-        let a = self.minimum();
-        let b = self.maximum();
+        let lower_bound = self.minimum();
+        let upper_bound = self.maximum();
 
-        // If domain is unbounded or μ is within bounds, return μ
-        if let (Some(min), Some(max)) = (&a, &b) {
+        // If the domain is unbounded or the nominal mean is inside it, keep μ.
+        if let (Some(min), Some(max)) = (&lower_bound, &upper_bound) {
             if min <= &mu && &mu <= max {
                 return SVector::from([mu]);
             }
-            // Both bounds exist, mean is outside. Return closer boundary.
+            // Both bounds exist and the nominal mean lies outside. Return the
+            // boundary that is closer to μ.
             if &mu < min {
                 return SVector::from([min.clone()]);
             } else {
@@ -110,13 +117,13 @@ where
             }
         }
 
-        // Only one bound exists
-        if let Some(min) = &a
+        // Only one bound exists.
+        if let Some(min) = &lower_bound
             && &mu < min
         {
             return SVector::from([min.clone()]);
         }
-        if let Some(max) = &b
+        if let Some(max) = &upper_bound
             && mu > *max
         {
             return SVector::from([max.clone()]);

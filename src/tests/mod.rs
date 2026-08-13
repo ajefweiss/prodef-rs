@@ -29,6 +29,8 @@
 mod constant;
 mod conversions;
 mod cosine;
+mod domain;
+mod kent;
 // mod kent;
 mod lognormal;
 mod loguniform;

@@ -1,9 +1,9 @@
 use crate::{
-    Density, Domain, KentDensity, TOLERANCE,
-    sampling::Sampler,
+    Density, Domain, KentDensity,
     tests::{N_SAMPLES, RNG_SEED, assert_sampling_determinism, collect_samples_nd},
 };
-use nalgebra::{U3, Vector3, dvector};
+use approx::ulps_eq;
+use nalgebra::{U3, Vector3};
 use rand::SeedableRng;
 
 #[test]
@@ -93,7 +93,7 @@ fn test_sampling_produces_unit_vectors() {
     for s in samples {
         let norm: f64 = s.norm();
         assert!(
-            (norm - 1.0).abs() < TOLERANCE,
+            ulps_eq!(norm, 1.0),
             "Expected ||sample|| ~= 1, got {}",
             norm
         );
@@ -109,15 +109,9 @@ fn test_sampling_respects_configuration_last_clamping() {
 
     let dist = KentDensity::new(mu, g1, 2.0, 1.5);
 
-    let mut sampler = Sampler::new(rand::rngs::Xoshiro256PlusPlus::seed_from_u64(RNG_SEED), 3);
+    let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(RNG_SEED);
 
-    // Put sampler.last at a vector inside the domain (||x|| < 1) but not on the shell.
-    sampler.last = dvector![0.3, 0.0, 0.0];
-
-    let sample = dist.sample(&mut sampler).unwrap();
+    let sample = dist.sample(&mut rng).unwrap();
     let norm: f64 = sample.norm();
-    assert!(
-        (norm - 1.0).abs() < TOLERANCE,
-        "Expected unit vector after sampling"
-    );
+    assert!(ulps_eq!(norm, 1.0), "Expected unit vector after sampling");
 }

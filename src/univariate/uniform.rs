@@ -15,14 +15,14 @@ where
     T: RealField,
 {
     /// Create a new [`UniformDensity`].
-    pub fn new(a: T, b: T) -> Option<Self> {
-        if a >= b {
+    pub fn new(lower_bound: T, upper_bound: T) -> Option<Self> {
+        if lower_bound >= upper_bound {
             None
         } else {
             Some(Self(Domain::new_mdomain(OVector::from_element_generic(
                 U1,
                 U1,
-                (Some(a), Some(b)),
+                (Some(lower_bound), Some(upper_bound)),
             ))))
         }
     }

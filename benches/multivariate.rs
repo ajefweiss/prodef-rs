@@ -3,8 +3,7 @@ use nalgebra::U1;
 use prodef::{
     ConstantDensity, CosineDensity, Density, LogUniformDensity, NormalDensity, UniformDensity,
 };
-use rand::SeedableRng;
-use rand_xoshiro::Xoshiro256PlusPlus;
+use rand::{SeedableRng, rngs::Xoshiro256PlusPlus};
 use std::{hint::black_box, time::Duration};
 
 fn bench_multivariate_density(c: &mut Criterion) {
