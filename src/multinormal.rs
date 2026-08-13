@@ -166,11 +166,11 @@ where
         let n_dim_b = domain.shape_generic();
         let n_weights = match opt_weights {
             Some(weights) => weights.len(),
-            None => n_dim.value(),
+            None => vectors.ncols(),
         };
 
         // Check dimensions of the input vector matrix, the domain and the weights.
-        if n_dim.value() != n_dim_b.value() || n_dim.value() == 0 || n_weights != n_dim.value() {
+        if n_dim.value() != n_dim_b.value() || n_dim.value() == 0 || n_weights != vectors.ncols() {
             return None;
         }
 
