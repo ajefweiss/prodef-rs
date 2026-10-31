@@ -1,8 +1,31 @@
-use crate::{Density, NormalDensity};
+use crate::{Density, NormalDensity, UnivariateDensity};
 use approx::assert_abs_diff_eq;
 use nalgebra::{SVector, U1};
 
 use super::*;
+
+#[test]
+fn test_construct_then_serialize_normal() {
+    // Constructor validation catches errors first
+    let none_result = NormalDensity::new(0.0, 0.0, None, None); // zero std_dev
+    assert!(
+        none_result.is_none(),
+        "Constructor should reject zero std_dev"
+    );
+
+    let none_result = NormalDensity::new(0.0, 1.0, Some(1.0), Some(0.0)); // reversed bounds
+    assert!(
+        none_result.is_none(),
+        "Constructor should reject reversed bounds"
+    );
+
+    // Valid construction followed by serialization
+    let normal = NormalDensity::new(0.0, 1.0, Some(-2.0), Some(2.0)).expect("valid");
+    let json = serde_json::to_string(&normal).expect("serialize");
+
+    // Round-trip should work
+    let _restored: NormalDensity<f64> = serde_json::from_str(&json).expect("roundtrip");
+}
 
 #[test]
 fn test_constructor_invalid_negative_variance() {
@@ -49,6 +72,78 @@ fn test_domain_unbounded() {
     let sample_large = SVector::from([1000.0]);
     assert!(domain.contains::<U1, U1>(&sample_small.as_view()));
     assert!(domain.contains::<U1, U1>(&sample_large.as_view()));
+}
+
+#[test]
+fn test_deserialize_normal_valid_roundtrip() {
+    let original = NormalDensity::new(0.0, 1.0, None, None).expect("valid constructor");
+    let json = serde_json::to_string(&original).expect("serialize");
+    let restored: NormalDensity<f64> = serde_json::from_str(&json).expect("deserialize valid data");
+
+    // Verify the domain is preserved
+    assert_eq!(restored.minimum(), original.minimum());
+    assert_eq!(restored.maximum(), original.maximum());
+}
+
+#[test]
+fn test_deserialize_normal_with_bounded_valid_roundtrip() {
+    let original =
+        NormalDensity::new(0.0, 1.0, Some(-3.0), Some(3.0)).expect("valid bounded constructor");
+    let json = serde_json::to_string(&original).expect("serialize");
+    let restored: NormalDensity<f64> = serde_json::from_str(&json).expect("deserialize valid data");
+
+    // Verify the bounds and domain are preserved
+    assert_eq!(restored.minimum(), original.minimum());
+    assert_eq!(restored.maximum(), original.maximum());
+}
+
+#[test]
+fn test_deserialize_normal_multiple_valid_roundtrips() {
+    // Test various valid parameters
+    let test_cases = vec![
+        (0.0, 1.0, None, None),
+        (0.0, 1.0, Some(-1.0), Some(1.0)),
+        (10.0, 2.0, Some(0.0), Some(20.0)),
+        (-5.0, 0.5, Some(-6.0), Some(-4.0)),
+    ];
+
+    for (mean, std_dev, lower, upper) in test_cases {
+        let original = NormalDensity::new(mean, std_dev, lower, upper).expect("valid constructor");
+        let json = serde_json::to_string(&original).expect("serialize");
+        let restored: NormalDensity<f64> =
+            serde_json::from_str(&json).expect("deserialize valid data");
+
+        assert_eq!(
+            restored.minimum(),
+            original.minimum(),
+            "min mismatch for ({}, {}, {:?}, {:?})",
+            mean,
+            std_dev,
+            lower,
+            upper
+        );
+        assert_eq!(
+            restored.maximum(),
+            original.maximum(),
+            "max mismatch for ({}, {}, {:?}, {:?})",
+            mean,
+            std_dev,
+            lower,
+            upper
+        );
+    }
+}
+
+#[test]
+fn test_deserialize_univariate_density_normal() {
+    let normal = NormalDensity::new(0.5, 0.1, Some(0.0), Some(1.0)).expect("valid constructor");
+    let uni_density = UnivariateDensity::from(normal);
+    let json = serde_json::to_string(&uni_density).expect("serialize");
+    let restored: UnivariateDensity<f64> =
+        serde_json::from_str(&json).expect("deserialize univariate");
+
+    // Verify it's a Normal variant
+    let _: NormalDensity<f64> = restored.try_into().expect("should be Normal");
 }
 
 #[test]

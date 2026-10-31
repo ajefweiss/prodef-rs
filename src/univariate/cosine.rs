@@ -1,4 +1,4 @@
-use crate::{Density, domain::Domain, tval};
+use crate::{Density, domain::Domain, generic_value};
 use approx::ulps_eq;
 use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
 use rand::{RngExt, SeedableRng};
@@ -114,7 +114,7 @@ where
 
     fn sample<R>(&self, rng: &mut R) -> Option<SVector<T, 1>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
     {
         // The range is limited to the interval [-π/2, π/2].
@@ -164,7 +164,7 @@ where
             // For the cosine distribution on [-π/2, π/2], variance ≈ (π²/4 - 2)
             // For general [-x, x], compute it
             // Using numerical integration or known result
-            return SVector::from([b.clone() * b.clone() - tval!(2.0, f64)]);
+            return SVector::from([b.clone() * b.clone() - generic_value!(2.0, f64)]);
         }
 
         // Normalization constant: ∫_a^b cos(x) dx = sin(b) - sin(a)
@@ -185,8 +185,10 @@ where
         // ∫_a^b x²*cos(x) dx = [x²*sin(x) + 2x*cos(x) - 2*sin(x)]_a^b
         let b_sq = b.clone() * b.clone();
         let a_sq = a.clone() * a.clone();
-        let upper = b_sq * sin_b.clone() + b * cos_b * tval!(2.0, f64) - sin_b * tval!(2.0, f64);
-        let lower = a_sq * sin_a.clone() + a * cos_a * tval!(2.0, f64) - sin_a * tval!(2.0, f64);
+        let upper =
+            b_sq * sin_b.clone() + b * cos_b * generic_value!(2.0, f64) - sin_b * generic_value!(2.0, f64);
+        let lower =
+            a_sq * sin_a.clone() + a * cos_a * generic_value!(2.0, f64) - sin_a * generic_value!(2.0, f64);
         let e_x_squared = (upper - lower) / norm;
 
         SVector::from([e_x_squared - mean.clone() * mean])

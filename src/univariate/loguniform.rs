@@ -1,4 +1,4 @@
-use crate::{Density, domain::Domain, tval};
+use crate::{Density, domain::Domain, generic_value};
 use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
 use rand::{RngExt, SeedableRng};
 use rand_distr::{Uniform, uniform::SampleUniform};
@@ -84,7 +84,7 @@ where
 
     fn sample<R>(&self, rng: &mut R) -> Option<SVector<T, 1>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
     {
         let uniform = Uniform::new_inclusive(
@@ -121,7 +121,7 @@ where
 
         let a_sq = a.clone() * a;
         let b_sq = b.clone() * b;
-        let e_x_sq = (b_sq - a_sq) / (tval!(2.0, f64) * ln_ratio);
+        let e_x_sq = (b_sq - a_sq) / (generic_value!(2.0, f64) * ln_ratio);
 
         let mean = self.mean()[0].clone();
         let mean_sq = mean.clone() * mean;

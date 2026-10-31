@@ -1,11 +1,11 @@
-use crate::{Density, domain::Domain, sampling::RejectionSampling, tval};
+use crate::{Density, domain::Domain, sampling::RejectionSampling, generic_value};
 use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
 use rand::{RngExt, SeedableRng};
 use rand_distr::{Distribution, StandardNormal, StandardUniform};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// A univariate normal PDF.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct NormalDensity<T>(T, T, Domain<T, U1>)
 where
     T: Scalar;
@@ -16,22 +16,37 @@ where
 {
     /// Evaluates the cumulative distribution function at `x`.
     pub fn cdf(&self, x: T) -> T {
-        let z = (x - self.0.clone()) / (self.1.clone() * tval!(2, usize).sqrt());
+        let z = (x - self.0.clone()) / (self.1.clone() * generic_value!(2, usize).sqrt());
 
-        tval!(0.5, f64) * (T::one() + Self::erf(z))
+        generic_value!(0.5, f64) * (T::one() + Self::erf(z))
     }
 
     /// Evaluates the error function at `x`.
     pub fn erf(z: T) -> T {
-        tval!(2, usize) / T::pi().sqrt()
-            * (z.clone() - z.clone().powi(3) / tval!(3, usize)
-                + z.clone().powi(5) / tval!(10, usize)
-                - z.clone().powi(7) / tval!(42, usize)
-                + z.clone().powi(9) / tval!(216, usize)
-                - z.powi(11) / tval!(1320, usize))
+        generic_value!(2, usize) / T::pi().sqrt()
+            * (z.clone() - z.clone().powi(3) / generic_value!(3, usize)
+                + z.clone().powi(5) / generic_value!(10, usize)
+                - z.clone().powi(7) / generic_value!(42, usize)
+                + z.clone().powi(9) / generic_value!(216, usize)
+                - z.powi(11) / generic_value!(1320, usize))
     }
 
     /// Create a new [`NormalDensity`].
+    ///
+    /// # Invariants
+    ///
+    /// The constructed `NormalDensity` always satisfies:
+    /// - `std_dev > 0` (positive standard deviation)
+    /// - If both `lower_bound` and `upper_bound` are present: `lower_bound < upper_bound`
+    ///
+    /// # Returns
+    ///
+    /// Returns `None` if invariants are violated.
+    ///
+    /// # Deserialization
+    ///
+    /// When deserializing, invariants are re-validated. If the serialized form
+    /// violates any invariant, deserialization returns an error (it does not panic).
     pub fn new(
         mean: T,
         std_dev: T,
@@ -83,9 +98,9 @@ where
         }
 
         Some(
-            T::one() / (self.1.clone() * tval!(2.0 * std::f64::consts::PI, f64).sqrt())
+            T::one() / (self.1.clone() * generic_value!(2.0 * std::f64::consts::PI, f64).sqrt())
                 * (-((sample[0].clone() - self.0.clone()) / self.1.clone()).powi(2)
-                    / tval!(2, usize))
+                    / generic_value!(2, usize))
                 .exp(),
         )
     }
@@ -134,10 +149,10 @@ where
 
     fn sample<R>(&self, rng: &mut R) -> Option<SVector<T, 1>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
     {
-        self.rejection_sample(rng)
+        Some(self.rejection_sample(rng))
     }
 
     fn sample_iter<R>(&self, rng: &mut R) -> impl Iterator<Item = Option<SVector<T, 1>>>
@@ -174,7 +189,7 @@ where
 {
     fn rejection_candidate<R>(&self, rng: &mut R) -> (SVector<T, 1>, Option<T>)
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
     {
         let z = rng.sample(StandardNormal);
@@ -197,5 +212,48 @@ impl<T: RealField> TryFrom<crate::univariate::UnivariateDensity<T>> for NormalDe
             crate::univariate::UnivariateDensity::Normal(pdf) => Ok(pdf),
             _ => Err(()),
         }
+    }
+}
+
+impl<'de, T> Deserialize<'de> for NormalDensity<T>
+where
+    T: RealField + Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct NormalData<T>
+        where
+            T: Scalar,
+        {
+            #[serde(rename = "0")]
+            mean: T,
+            #[serde(rename = "1")]
+            std_dev: T,
+            #[serde(rename = "2")]
+            domain: Domain<T, U1>,
+        }
+
+        let data: NormalData<T> = Deserialize::deserialize(deserializer)?;
+
+        // Validate invariants
+        if data.std_dev <= T::zero() {
+            return Err(serde::de::Error::custom(
+                "NormalDensity: std_dev must be strictly positive (> 0)",
+            ));
+        }
+
+        // Validate domain bounds if both are present
+        if let Some((Some(min), Some(max))) = data.domain.inner() {
+            if min >= max {
+                return Err(serde::de::Error::custom(
+                    "NormalDensity: lower_bound must be strictly less than upper_bound",
+                ));
+            }
+        }
+
+        Ok(NormalDensity(data.mean, data.std_dev, data.domain))
     }
 }

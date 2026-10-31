@@ -14,6 +14,7 @@ use std::fmt::Debug;
 /// - **Unbounded (`UDomain`)**: The entire ℝᵈ space (all `D`-dimensional real values valid)
 /// - **Bounded (`MDomain`)**: A `D`-dimensional hypercube with per-dimension interval bounds
 /// - **Spherical (`SDomain`)**: A `D`-dimensional ball (sphere) centered at the origin with radius 1
+/// - **Spherical Shell (`ShDomain`)**: A `D`-dimensional shell (sphere) centered at the origin with radius 1
 ///
 /// # Operations
 ///
@@ -209,7 +210,7 @@ where
         match self {
             Domain::UDomain(_) => true,
             Domain::MDomain(sdoms) => sdoms.iter().zip(sample).all(|(sdom, value)| match sdom {
-                (Some(min), Some(max)) => (value >= min) & (value <= max),
+                (Some(min), Some(max)) => (value >= min) && (value <= max),
                 (Some(min), None) => value >= min,
                 (None, Some(max)) => value <= max,
                 (None, None) => true,

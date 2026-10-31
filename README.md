@@ -1,6 +1,7 @@
 # ProDeF - Probability Density Functions
 
-A simple Rust crate for handling probability distributions. Provides efficient, type-safe APIs for evaluating, sampling, and manipulating probability densities across univariate, multivariate, and non-parametric representations.
+A simple Rust crate for handling probability distributions. 
+Provides efficient, type-safe APIs for evaluating, sampling, and manipulating probability density distributions (PDFs) across univariate, multivariate, and non-parametric representations.
 
 All probability density functions (PDFs) implement the [`Density`] trait, the core trait of this crate, providing common operations like:
  - Evaluation: Compute probability density (non-normalized) for a given sample point

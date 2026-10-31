@@ -55,14 +55,14 @@ where
         }
 
         // Compute the dot product between sample and mean direction mu
-        let mu_dot_sample = self.mu.dot(&sample);
+        let mu_dot_sample = self.mu.dot(sample);
 
         // Compute g2 as the normalized second major axis (perpendicular to both mu and g1)
         let g2 = self.mu.cross(&self.g1).normalize();
 
         // Compute projections onto g1 and g2
-        let g1_dot_sample = self.g1.dot(&sample);
-        let g2_dot_sample = g2.dot(&sample);
+        let g1_dot_sample = self.g1.dot(sample);
+        let g2_dot_sample = g2.dot(sample);
 
         // Kent distribution log-density:
         // log f(x) = kappa * (mu · x) + beta * (g1 · x)^2 - (g2 · x)^2
@@ -85,7 +85,7 @@ where
 
     fn sample<R>(&self, rng: &mut R) -> Option<OVector<T, Const<3>>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         DefaultAllocator: Allocator<Const<3>>,
     {
         Some(self.mh_sample(rng))
@@ -117,7 +117,7 @@ where
 {
     fn mh_candidate<R>(&self, current: OVector<T, Const<3>>, rng: &mut R) -> OVector<T, Const<3>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
     {
         // Proposal: small random perturbation on the unit sphere
         // Generate a random tangent vector and add to current point
@@ -131,7 +131,7 @@ where
         candidate
     }
 
-    fn mh_initialze(&self) -> OVector<T, Const<3>>
+    fn mh_initialize(&self) -> OVector<T, Const<3>>
     where
         DefaultAllocator: Allocator<Const<3>>,
     {

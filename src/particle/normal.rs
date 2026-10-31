@@ -1,5 +1,6 @@
 use crate::{
-    Density, Domain, multinormal::MultivariateNormalDensity, particle::ParticleDensity, tval,
+    Density, Domain, generic_value, multinormal::MultivariateNormalDensity,
+    particle::ParticleDensity,
 };
 use log::warn;
 use nalgebra::{
@@ -35,8 +36,8 @@ where
         let n_dim = view.shape_generic().0;
         let n_dim_b = domain.shape_generic();
 
-        // Check dimensions (only required for D = Dyn).
-        if n_dim.value() != n_dim_b.value() {
+        // Check for empty particle set and dimensions (only required for D = Dyn).
+        if (view.ncols() == 0) || (n_dim.value() != n_dim_b.value()) {
             return None;
         }
 
@@ -154,17 +155,17 @@ where
             return None;
         }
 
-        let count = tval!(self.count(), usize);
-        let rank = tval!(self.kernel.rank(), usize);
+        let count = generic_value!(self.count(), usize);
+        let rank = generic_value!(self.kernel.rank(), usize);
 
         // Construct the bandwidth matrix K_H using Silverman's rule of thumb: K_H = K * (1/n)^(1/(d+4))
         let bandwidth = self.kernel.clone()
-            * (T::one() / count.powf(T::one() / (rank + tval!(4, usize)))).powi(2);
+            * (T::one() / count.powf(T::one() / (rank + generic_value!(4, usize)))).powi(2);
 
         let normalization = bandwidth.normalization_factor();
 
         Some(
-            normalization / tval!(self.count(), usize)
+            normalization / generic_value!(self.count(), usize)
                 * match &self.opt_weights {
                     Some(weights) => self
                         .particles
@@ -175,7 +176,7 @@ where
 
                             weight.clone()
                                 * (-bandwidth.mahalanobis_distance_sq(&delta_x.as_view())
-                                    / tval!(2, usize))
+                                    / generic_value!(2, usize))
                                 .exp()
                         })
                         .sum::<T>(),
@@ -187,7 +188,7 @@ where
                             let delta_x = sample - col;
 
                             (-bandwidth.mahalanobis_distance_sq(&delta_x.as_view())
-                                / tval!(2, usize))
+                                / generic_value!(2, usize))
                             .exp()
                         })
                         .sum::<T>(),
@@ -215,7 +216,7 @@ where
                 }),
             ),
             None => {
-                let count = tval!(self.particles.ncols(), usize);
+                let count = generic_value!(self.particles.ncols(), usize);
                 OVector::from_iterator_generic(
                     self.particles.shape_generic().0,
                     U1,
@@ -228,7 +229,7 @@ where
 
     fn sample<R>(&self, rng: &mut R) -> Option<OVector<T, D>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
     {
         let mut attempts = 0;
 
@@ -296,7 +297,7 @@ where
                 }),
             ),
             None => {
-                let count = tval!(self.particles.ncols(), usize);
+                let count = generic_value!(self.particles.ncols(), usize);
                 OVector::from_iterator_generic(
                     self.particles.shape_generic().0,
                     U1,

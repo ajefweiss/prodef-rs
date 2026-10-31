@@ -1,12 +1,12 @@
 //! A module that implements a multivariate normal PDF.
 
-use crate::{Density, domain::Domain, sampling::RejectionSampling, tval};
+use crate::{Density, domain::Domain, generic_value, sampling::RejectionSampling};
 use itertools::{Itertools, zip_eq};
 use nalgebra::{
     Const, DMatrix, DVector, DefaultAllocator, Dim, Dyn, MatrixView, OMatrix, OVector, RealField,
     Scalar, U1, VectorView, allocator::Allocator,
 };
-use rand::{RngExt, SeedableRng};
+use rand::RngExt;
 use rand_distr::{Distribution, StandardNormal, StandardUniform};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -277,7 +277,7 @@ where
             };
         });
 
-        let mut m = l_1.clone().solve_lower_triangular(&l_0).unwrap();
+        let mut m = l_1.clone().solve_lower_triangular(&l_0)?;
 
         // Detect NaN's and zero them out so numerical instabilities do not propagate
         // into the final divergence value.
@@ -287,15 +287,15 @@ where
             }
         });
 
-        let y = l_1.clone().solve_lower_triangular(&(mu_1 - mu_0)).unwrap();
+        let y = l_1.clone().solve_lower_triangular(&(mu_1 - mu_0))?;
 
         Some(
             // KL divergence of two multivariate normals:
             // 0.5 * [ tr(Σ1⁻¹ Σ0) - d + (μ1-μ0)ᵀ Σ1⁻¹ (μ1-μ0) + ln(|Σ1|/|Σ0|) ]
             // Here the computation is expressed in terms of the lower-triangular decompositions.
-            (m.iter().cloned().sum::<T>() - tval!(n_dim, usize)
+            (m.iter().cloned().sum::<T>() - generic_value!(n_dim, usize)
                 + y.norm()
-                + tval!(2, usize)
+                + generic_value!(2, usize)
                     * l_1
                         .diagonal()
                         .iter()
@@ -308,7 +308,7 @@ where
                             }
                         })
                         .sum::<T>())
-                / tval!(2, usize),
+                / generic_value!(2, usize),
         )
     }
 
@@ -329,7 +329,7 @@ where
     /// Returns the normalization factor for the multivariate normal distribution.
     pub fn normalization_factor(&self) -> T {
         T::one()
-            / (T::two_pi()).powf(tval!(self.rank(), usize) / tval!(2, usize))
+            / (T::two_pi()).powf(generic_value!(self.rank(), usize) / generic_value!(2, usize))
             / self.determinant().sqrt()
     }
 
@@ -482,7 +482,7 @@ where
         }
 
         Some(
-            (-self.mahalanobis_distance_sq(sample) / tval!(2, usize)).exp()
+            (-self.mahalanobis_distance_sq(sample) / generic_value!(2, usize)).exp()
                 / ((T::two_pi()).powi(self.rank() as i32) * self.determinant()).sqrt(),
         )
     }
@@ -502,8 +502,8 @@ where
         Some(
             -(self.determinant().ln()
                 + self.mahalanobis_distance_sq(sample)
-                + tval!(self.rank(), usize) * T::two_pi().ln())
-                / tval!(2, usize),
+                + generic_value!(self.rank(), usize) * T::two_pi().ln())
+                / generic_value!(2, usize),
         )
     }
 
@@ -513,14 +513,14 @@ where
 
     fn sample<R>(&self, rng: &mut R) -> Option<OVector<T, D>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
     {
-        self.rejection_sample(rng)
+        Some(self.rejection_sample(rng))
     }
 
     fn sample_iter<R>(&self, rng: &mut R) -> impl Iterator<Item = Option<OVector<T, D>>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
     {
         let normal = StandardNormal;
         let n_dim = self.covariance.shape_generic().0;
@@ -558,7 +558,7 @@ where
 {
     fn rejection_candidate<R>(&self, rng: &mut R) -> (OVector<T, D>, Option<T>)
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
     {
         let n_dim = self.covariance.shape_generic().0;
 
@@ -748,14 +748,14 @@ where
         return None;
     }
 
-    let mu_x = x_iter.clone().cloned().sum::<T>() / tval!(length, usize);
-    let mu_y = y_iter.clone().cloned().sum::<T>() / tval!(length, usize);
+    let mu_x = x_iter.clone().cloned().sum::<T>() / generic_value!(length, usize);
+    let mu_y = y_iter.clone().cloned().sum::<T>() / generic_value!(length, usize);
 
     Some(
         zip_eq(x_iter, y_iter)
             .map(|(val_x, val_y)| (mu_x.clone() - val_x.clone()) * (mu_y.clone() - val_y.clone()))
             .sum::<T>()
-            / tval!(length - 1, usize),
+            / generic_value!(length - 1, usize),
     )
 }
 

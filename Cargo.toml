@@ -1,6 +1,6 @@
 [package]
 name = "prodef"
-version = "0.3.2"
+version = "0.5.0"
 edition = "2024"
 
 authors = ["Andreas J. Weiss <ajefweiss@gmail.com>"]
@@ -17,21 +17,22 @@ features = ["pyo3"]
 approx = "0.5.1"
 derive_more = { version = "2.1.1", features = ["full"] }
 itertools = "0.15.0"
-log = "0.4.33"
-nalgebra = { version ="0.34.2", features = ["rayon", "serde-serialize"] }
+log = "0.4.34"
+nalgebra = { version ="0.35.0", features = ["rayon", "serde-serialize"] }
 num-traits = "0.2.19"
 numpy = { version = "0.29.0", features = ["nalgebra"], optional = true }
-pyo3 = { version = "0.29.2", features = ["multiple-pymethods", "extension-module"], optional = true }
-rand = "0.10.2"
+pyo3 = { version = "0.29.3", features = ["multiple-pymethods", "extension-module"], optional = true }
+rand = "0.10.3"
 rand_distr = "0.6.0"
 rayon = "1.12.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_arrays = "0.2.0"
-thiserror = "2.0.20"
+thiserror = "2.0.21"
 
 [dev-dependencies]
 approx = "0.5.1"
 criterion = { version = "0.8", features = ["html_reports"] }
+serde_json = "1.0.154"
 
 [[bench]]
 name = "multivariate"

@@ -60,7 +60,7 @@ where
 
     fn sample<R>(&self, _rng: &mut R) -> Option<SVector<T, 1>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
     {
         match &self.0.inner().unwrap() {

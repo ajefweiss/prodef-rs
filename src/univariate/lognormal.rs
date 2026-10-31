@@ -1,4 +1,4 @@
-use crate::{Density, domain::Domain, sampling::RejectionSampling, tval};
+use crate::{Density, domain::Domain, sampling::RejectionSampling, generic_value};
 use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
 use rand::{RngExt, SeedableRng};
 use rand_distr::{Distribution, StandardNormal, StandardUniform};
@@ -90,8 +90,8 @@ where
         let z = (ln_x - self.0.clone()) / self.1.clone();
 
         Some(
-            T::one() / (x * self.1.clone() * tval!(2.0 * std::f64::consts::PI, f64).sqrt())
-                * (-z.powi(2) / tval!(2, usize)).exp(),
+            T::one() / (x * self.1.clone() * generic_value!(2.0 * std::f64::consts::PI, f64).sqrt())
+                * (-z.powi(2) / generic_value!(2, usize)).exp(),
         )
     }
 
@@ -100,15 +100,15 @@ where
     }
 
     fn mean(&self) -> SVector<T, 1> {
-        SVector::from([(self.0.clone() + self.1.clone().powi(2) / tval!(2, usize)).exp()])
+        SVector::from([(self.0.clone() + self.1.clone().powi(2) / generic_value!(2, usize)).exp()])
     }
 
     fn sample<R>(&self, rng: &mut R) -> Option<SVector<T, 1>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
     {
-        self.rejection_sample(rng)
+        Some(self.rejection_sample(rng))
     }
 
     fn sample_iter<R>(&self, rng: &mut R) -> impl Iterator<Item = Option<SVector<T, 1>>>
@@ -139,7 +139,7 @@ where
         let sigma_sq = self.1.clone().powi(2);
 
         let f1 = sigma_sq.clone().exp() - T::one();
-        let f2 = (tval!(2, usize) * self.0.clone() + sigma_sq).exp();
+        let f2 = (generic_value!(2, usize) * self.0.clone() + sigma_sq).exp();
 
         SVector::from([(f1 * f2)])
     }
@@ -153,7 +153,7 @@ where
 {
     fn rejection_candidate<R>(&self, rng: &mut R) -> (SVector<T, 1>, Option<T>)
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
     {
         let z = rng.sample(StandardNormal);

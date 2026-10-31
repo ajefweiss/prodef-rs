@@ -1,11 +1,11 @@
-use crate::{Density, domain::Domain, tval};
+use crate::{Density, domain::Domain, generic_value};
 use nalgebra::{Dim, OVector, RealField, SVector, Scalar, U1, VectorView};
 use rand::{RngExt, SeedableRng};
 use rand_distr::{Uniform, uniform::SampleUniform};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// A uniform PDF.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct UniformDensity<T>(Domain<T, U1>)
 where
     T: Scalar;
@@ -15,6 +15,21 @@ where
     T: RealField,
 {
     /// Create a new [`UniformDensity`].
+    ///
+    /// # Invariants
+    ///
+    /// The constructed `UniformDensity` always satisfies:
+    /// - The domain is an `MDomain` with explicit bounds (a, b)
+    /// - `lower_bound < upper_bound`
+    ///
+    /// # Returns
+    ///
+    /// Returns `None` if `lower_bound >= upper_bound`.
+    ///
+    /// # Deserialization
+    ///
+    /// When deserializing, invariants are re-validated. If the serialized form
+    /// violates any invariant, deserialization returns an error (it does not panic).
     pub fn new(lower_bound: T, upper_bound: T) -> Option<Self> {
         if lower_bound >= upper_bound {
             None
@@ -72,12 +87,12 @@ where
     }
 
     fn mean(&self) -> SVector<T, 1> {
-        SVector::from([(self.minimum() + self.maximum()) / tval!(2, usize)])
+        SVector::from([(self.minimum() + self.maximum()) / generic_value!(2, usize)])
     }
 
     fn sample<R>(&self, rng: &mut R) -> Option<SVector<T, 1>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<U1>,
     {
         let uniform = Uniform::new_inclusive(
@@ -107,7 +122,7 @@ where
     fn variance(&self) -> SVector<T, 1> {
         let range = self.maximum() - self.minimum();
 
-        SVector::from([range.powi(2) / tval!(12, usize)])
+        SVector::from([range.powi(2) / generic_value!(12, usize)])
     }
 }
 
@@ -118,6 +133,32 @@ impl<T: RealField> TryFrom<crate::univariate::UnivariateDensity<T>> for UniformD
         match value {
             crate::univariate::UnivariateDensity::Uniform(pdf) => Ok(pdf),
             _ => Err(()),
+        }
+    }
+}
+
+impl<'de, T> Deserialize<'de> for UniformDensity<T>
+where
+    T: RealField + Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let domain = Domain::<T, U1>::deserialize(deserializer)?;
+
+        // Validate that the domain is MDomain with proper bounds
+        match domain.inner() {
+            Some((Some(min), Some(max))) if min < max => Ok(UniformDensity(domain)),
+            Some((Some(_), Some(_))) => Err(serde::de::Error::custom(
+                "UniformDensity: lower_bound must be strictly less than upper_bound",
+            )),
+            Some((None, _)) | Some((_, None)) => Err(serde::de::Error::custom(
+                "UniformDensity: domain must have explicit lower and upper bounds",
+            )),
+            None => Err(serde::de::Error::custom(
+                "UniformDensity: domain must be MDomain with explicit bounds",
+            )),
         }
     }
 }

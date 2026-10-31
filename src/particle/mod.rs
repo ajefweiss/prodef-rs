@@ -1,8 +1,8 @@
 mod normal;
 
 use crate::Domain;
-use nalgebra::{DefaultAllocator, Dim, Dyn, OMatrix, OVector, RealField, allocator::Allocator};
-use rand::{RngExt, SeedableRng};
+use nalgebra::{DefaultAllocator, Dim, Dyn, OMatrix, OVector, RealField, U1, allocator::Allocator};
+use rand::RngExt;
 use rand_distr::{Uniform, uniform::SampleUniform};
 use serde::{Deserialize, Serialize};
 
@@ -100,10 +100,26 @@ where
         &self.particles
     }
 
+    /// Sets the internal `domain` field to a [`Domain::MDomain`] with limits given by the range of particles.
+    pub fn reset_domain(&mut self) {
+        let maxs: Vec<T> = self.particles.column_iter().map(|row| row.max()).collect();
+        let mins: Vec<T> = self.particles.column_iter().map(|row| row.min()).collect();
+
+        let bounds = OVector::from_iterator_generic(
+            self.domain.shape_generic(),
+            U1,
+            maxs.iter()
+                .zip(mins.iter())
+                .map(|(max, min)| (Some(min.clone()), Some(max.clone()))),
+        );
+
+        self.domain = Domain::new_mdomain(bounds)
+    }
+
     /// Draw a random sample particle.
     pub fn sample_particle<R>(&self, rng: &mut R) -> OVector<T, D>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
     {
         let pdx = {
             match &self.opt_weights {

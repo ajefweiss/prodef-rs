@@ -39,8 +39,9 @@ macro_rules! match_univariate {
 }
 
 /// An algebraic data type (ADT) that contains all univariate PDFs.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "content")]
+#[serde(bound(deserialize = "T: RealField + Deserialize<'de>"))]
 pub enum UnivariateDensity<T>
 where
     T: Scalar,
@@ -91,7 +92,7 @@ where
 
     fn sample<R>(&self, rng: &mut R) -> Option<SVector<T, 1>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         DefaultAllocator: Allocator<U1>,
     {
         let sample = match_univariate!(self, pdf, {

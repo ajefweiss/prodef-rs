@@ -1,7 +1,7 @@
 use crate::Density;
 use log::warn;
 use nalgebra::{DefaultAllocator, Dim, OVector, RealField, allocator::Allocator};
-use rand::{RngExt, SeedableRng};
+use rand::RngExt;
 use rand_distr::{Distribution, Uniform, uniform::SampleUniform};
 
 /// A trait that implements the Metropolis-Hastings sampling algorithm.
@@ -13,25 +13,28 @@ where
     /// Generate a single candidate sample.
     fn mh_candidate<R>(&self, current: OVector<T, D>, rng: &mut R) -> OVector<T, D>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         DefaultAllocator: Allocator<D>;
 
     /// Return an initial sample for the MH algorithm.
-    fn mh_initialze(&self) -> OVector<T, D>
+    fn mh_initialize(&self) -> OVector<T, D>
     where
         DefaultAllocator: Allocator<D>;
 
     /// Draw a random sample using the Metropolis-Hastings algorithm.
     fn mh_sample<R>(&self, rng: &mut R) -> OVector<T, D>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
         DefaultAllocator: Allocator<D>,
     {
         warn!(
             "individual sampling implementation using the metropolis-hastings is highly inefficient"
         );
 
-        self.mh_sample_iter(rng).take(20).last().unwrap()
+        self.mh_sample_iter(rng)
+            .take(20)
+            .last()
+            .expect("failed to generate sample due to an empty iterator")
     }
 
     /// Iterator variant of [`Self::metropolis_hastings_sample`].
@@ -41,13 +44,13 @@ where
     fn mh_sample_iter<R>(&self, rng: &mut R) -> impl Iterator<Item = OVector<T, D>>
     where
         T: SampleUniform,
-        R: RngExt + SeedableRng,
+        R: RngExt,
         DefaultAllocator: Allocator<D>,
     {
         use std::iter::from_fn;
 
         // Cache the current state's log-density.
-        let mut current = self.mh_initialze();
+        let mut current = self.mh_initialize();
         let mut current_log_density = self.log_density(&current.as_view());
         let uniform = Uniform::new(T::zero(), T::one()).unwrap();
 

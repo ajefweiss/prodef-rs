@@ -1,6 +1,6 @@
 //! A module that implements multiple univariate PDFs and a multivariate distribution that is a product of independent univariate PDFs.
 
-use crate::{Density, UnivariateDensity, domain::Domain, tval, univariate::match_univariate};
+use crate::{Density, UnivariateDensity, domain::Domain, univariate::match_univariate};
 use derive_more::IntoIterator;
 use nalgebra::{
     DefaultAllocator, Dim, OVector, RealField, SVector, Scalar, U1, VectorView,
@@ -9,7 +9,7 @@ use nalgebra::{
 use rand::{RngExt, SeedableRng};
 use rand_distr::{Distribution, StandardNormal, StandardUniform, uniform::SampleUniform};
 use serde::{Deserialize, Serialize};
-use std::{f64, fmt::Debug, iter::repeat_with};
+use std::{fmt::Debug, iter::repeat_with};
 
 /// A `D`-dimensional distribution where each dimension is
 /// **independent** with potentially different univariate distributions. This is a **product distribution**:
@@ -117,17 +117,21 @@ where
         }
 
         let mut rlh = T::one();
+        let mut flag = false;
 
         self.0.iter().zip(sample.iter()).for_each(|(uvpdf, value)| {
             let vec = SVector::from([value.clone()]);
 
-            rlh *= match_univariate!(uvpdf, pdf, {
+            if let Some(value) = match_univariate!(uvpdf, pdf, {
                 Density::<T, U1>::density::<U1, U1>(pdf, &vec.as_view())
-            })
-            .unwrap_or(tval!(f64::NAN, f64));
+            }) {
+                rlh *= value;
+            } else {
+                flag = true;
+            };
         });
 
-        Some(rlh)
+        if flag { None } else { Some(rlh) }
     }
 
     fn domain(&self) -> Domain<T, D> {
@@ -165,13 +169,13 @@ where
 
     fn sample<R>(&self, rng: &mut R) -> Option<OVector<T, D>>
     where
-        R: RngExt + SeedableRng,
+        R: RngExt,
     {
         let mut draw = OVector::<T, D>::zeros_generic(self.0.shape_generic().0, U1);
 
         for idx in 0..self.0.shape_generic().0.value() {
             draw[idx] = match_univariate!(&self.0[idx], pdf, {
-                let result = match Density::<T, U1>::sample(pdf, &mut rng.fork()) {
+                let result = match Density::<T, U1>::sample(pdf, rng) {
                     Some(sample) => sample[0].clone(),
                     None => return None,
                 };

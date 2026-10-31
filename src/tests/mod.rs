@@ -40,7 +40,7 @@ mod normal;
 mod particle;
 mod uniform;
 
-use crate::{Density, tval};
+use crate::{Density, generic_value};
 use nalgebra::{DefaultAllocator, OVector, RealField, SVector, U1, allocator::Allocator};
 use rand::{SeedableRng, rngs::Xoshiro256PlusPlus};
 
@@ -143,7 +143,7 @@ fn compute_sample_mean<T: RealField>(samples: &[T]) -> T {
     }
 
     let sum = samples.iter().cloned().fold(T::zero(), T::add);
-    sum / tval!(samples.len(), usize)
+    sum / generic_value!(samples.len(), usize)
 }
 
 /// Computes the sample variance from samples and mean.
@@ -157,7 +157,7 @@ fn compute_sample_variance<T: RealField>(samples: &[T], mean: T) -> T {
         .cloned()
         .fold(T::zero(), |acc, x| acc + (x - mean.clone()).powi(2));
 
-    sum_sq_diff / tval!(samples.len() - 1, usize)
+    sum_sq_diff / generic_value!(samples.len() - 1, usize)
 }
 
 /// Computes the mean vector of N-D samples.
@@ -177,7 +177,7 @@ where
         OVector::zeros_generic(samples[0].shape_generic().0, U1),
         |acc, x| acc + x,
     );
-    sum / tval!(samples.len(), usize)
+    sum / generic_value!(samples.len(), usize)
 }
 
 /// Extracts a single dimension from N-D samples.
